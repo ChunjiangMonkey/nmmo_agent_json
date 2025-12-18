@@ -1,0 +1,136 @@
+import json
+import re
+import openai
+
+
+def compare_dict_keys(d1, d2, ignore_case=True):
+    def flatten_keys(d, parent_key="", ignore_case=True):
+        keys = set()
+        for k, v in d.items():
+            k_norm = k.lower() if ignore_case else k
+            new_key = f"{parent_key}_{k_norm}" if parent_key else k_norm
+            keys.add(new_key)
+            if isinstance(v, dict):
+                keys |= flatten_keys(v, new_key, ignore_case=ignore_case)
+        return keys
+
+    keys1 = flatten_keys(d1, ignore_case=ignore_case)
+    keys2 = flatten_keys(d2, ignore_case=ignore_case)
+
+    return keys1 == keys2
+
+
+class OpenAIClient:
+    def __init__(
+        self,
+        base_url=None,
+        api_key=None,
+        model=None,
+        enable_thinking=False,
+        max_try_time=3,
+    ):
+        self.model = model
+        self.client = openai.OpenAI(
+            api_key=api_key,
+            base_url=base_url,
+        )
+        self.enable_thinking = enable_thinking
+        self.max_try_time = max_try_time
+
+    def get_response(self, message):
+        try:
+            response = self.client.chat.completions.create(
+                model=self.model,
+                messages=message,
+                temperature=0.1,
+                extra_body={"chat_template_kwargs": {"enable_thinking": self.enable_thinking}},
+            )
+            return response.choices[0].message.content.strip()
+        except Exception as e:
+            print(f"OpenAI API call failed: {e}")
+            return None
+
+    def generate(self, message, decision_space=None):
+        try_time = 0
+        while try_time <= self.max_try_time:
+            response = self.get_response(message)
+            if response is None:
+                try_time += 1
+                continue
+            if decision_space is None:
+                return response
+            try:
+                # response = re.sub(r"```(?:json)?\s*([\s\S]+?)\s*```", r"\1", response.strip())
+                # response = json.loads(response)
+                json_part = re.search(r"\{\s*[\s\S]*?\s*\}", response)
+                json_str = json_part.group(0)
+                response = json.loads(json_str)
+                assert compare_dict_keys(response, decision_space)
+            except Exception:
+                print(response)
+                try_time += 1
+            else:
+                return response
+        return None
+
+
+class LlamaClient:
+
+    def __init__(
+        self,
+        # base_url="http://100.98.11.145:8000/v1",
+        base_url="http://localhost:8000/v1",
+        api_key="llama",
+        model="llama",
+        enable_thinking=False,
+        max_try_time=3,
+    ):
+        self.model = model
+        self.client = openai.OpenAI(
+            api_key=api_key,
+            base_url=base_url,
+        )
+        self.enable_thinking = enable_thinking
+        self.max_try_time = max_try_time
+
+    def get_response(self, message):
+        # return
+        try:
+            response = self.client.chat.completions.create(
+                model=self.model,
+                messages=message,
+                temperature=0.1,
+                extra_body={"chat_template_kwargs": {"enable_thinking": self.enable_thinking}},
+            )
+            return response.choices[0].message.content.strip()
+        except Exception as e:
+            print(f"Llama API call failed: {e}")
+            return None
+
+    def generate(self, message, response_format=None, choice_space=None):
+        try_time = 0
+        while try_time <= self.max_try_time:
+            response = self.get_response(message)
+            # print("Raw response:", response)
+            try:
+                json_part = re.search(r"\{\s*[\s\S]*?\s*\}", response)
+                json_str = json_part.group(0)
+                response = json.loads(json_str)
+                # response = re.sub(r"```(?:json)?\s*([\s\S]+?)\s*```", r"\1", response.strip())
+                # response = json.loads(response)
+                if response_format:
+                    assert compare_dict_keys(response, response_format)
+                if choice_space:
+                    assert response["choice"] in choice_space
+            except Exception:
+                try_time += 1
+            else:
+                return response
+        return None
+
+
+if __name__ == "__main__":
+    client = LlamaClient()
+    messages = [{"role": "user", "content": "Hello"}]
+    res = client.generate(messages)
+    print(res)

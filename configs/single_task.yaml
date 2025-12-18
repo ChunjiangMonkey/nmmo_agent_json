@@ -1,0 +1,31 @@
+experiment:
+  episode_num: 1
+  replay_save_interval: 128
+  # debug: True
+
+env:
+  map_size: 128
+  player_num: 1
+  npc_num: 256
+  horizon: 1024
+  fog_onset: ~
+  fog_speed: 0
+  fog_final_size: 16
+  disable_stone: False
+  individual_num: 0
+  competitive_num: 0
+  cooperative_num: 0
+
+
+
+agent:
+  model_name: "llama"
+  enable_llm_thinking: False
+  use_information_reduction: False
+  use_strategy: False
+  use_interaction_memory: False
+  allow_give_action: True
+  max_execute_step: 10
+  max_verify_time: 0
+  share_strategy: False
+  share_game_rule_module: False
