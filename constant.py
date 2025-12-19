@@ -41,24 +41,13 @@ ITEM_NAME_TO_ID = {
     "Potion": 17,
 }
 
-PASSABLE_TILE = (
-    "Foliage",
-    "Ore",
-    "Tree",
-    "Crystal",
-    "Herb",
-    "Grass",
-    "Scrub",
-)
 
-IMPASSABLE_TILE = (
+IMPASSIBLE_TILE = (
     "Water",
     "Stone",
-    "Slag",
-    "Stump",
-    "Fragment",
-    "Weeds",
     "Ocean",
+    "Fish",
+    "Void",
 )
 
 RESOURCE_TILE = (
@@ -70,6 +59,14 @@ RESOURCE_TILE = (
     "Water",
     "Fish",
 )
+
+HARVESTED_NAME_TO_RESOURCE_NAME = {
+    "Scrub": "Foliage",
+    "Slag": "Ore",
+    "Stump": "Tree",
+    "Fragment": "Crystal",
+    "Weeds": "Herb",
+}
 
 NPC_TYPE_ID_TO_NAME = {
     0: "player",

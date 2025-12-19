@@ -1,4 +1,5 @@
 import heapq
+import numpy as np
 from nmmo.lib.utils import in_bounds
 
 
@@ -14,6 +15,14 @@ def l1(start, goal):
 def adjacentPos(pos):
     r, c = pos
     return [(r - 1, c), (r, c - 1), (r + 1, c), (r, c + 1)]
+
+
+def get_bounds(tiles):
+    min_r = np.min(tiles[:, 0])
+    max_r = np.max(tiles[:, 0])
+    min_c = np.min(tiles[:, 1])
+    max_c = np.max(tiles[:, 1])
+    return (min_r, max_r, min_c, max_c)
 
 
 def a_star(realm_map, start, goal, cutoff=CUTOFF):

@@ -14,7 +14,7 @@ Survival is the prerequisite for completing various goals. Each player has Healt
 
 # MAP_OVERVIEW = """
 # ## Game Map
-# The map is a {map_size} × {map_size} tile map. Tiles fall into two types: passable tiles and obstacle tiles. Passable tiles include: Foliage, Ore, Tree, Crystal, Herb, Grass, Scrub (Harvested Tile). Obstacle tiles include: Water, Fish, Stone. The map is partially observable, and the player can only see information on tiles within a {view_size} × {view_size} area. Players cannot leave the map edges. 
+# The map is a {map_size} × {map_size} tile map. Tiles fall into two types: passable tiles and obstacle tiles. Passable tiles include: Foliage, Ore, Tree, Crystal, Herb, Grass, Scrub (Harvested Tile). Obstacle tiles include: Water, Fish, Stone. The map is partially observable, and the player can only see information on tiles within a {view_size} × {view_size} area. Players cannot leave the map edges.
 # """
 MAP_OVERVIEW = """
 ## Tile, Game Map and Observation
@@ -96,3 +96,227 @@ Higher-level Carving skill can increase the yield of harvesting Tree and the lev
 Higher-level Prospecting skill can increase the yield of harvesting Ore and the level of Pickaxe that can be equipped; Prospecting skill can be improved by harvesting Ore.
 Higher-level Alchemy skill can increase the yield of harvesting Crystal and the level of Chisel that can be equipped; Alchemy skill can be improved by harvesting Crystal.
 """
+
+RESOURCE_TABLE = {
+    "Foliage": {
+        "attribute_recovery": "food",
+    },
+    "Water": {
+        "attribute_recovery": "water",
+    },
+    "Fish": {
+        "output_item": "Ration",
+        "related skill": "Fishing",
+        "tool_for_higher_level": "Rod",
+    },
+    "Herb": {
+        "output_item": "Potion",
+        "related skill": "Herbalism",
+        "tool_for_higher_level": "Gloves",
+    },
+    "Tree": {
+        "output_item": "Arrow",
+        "rare_output_item (2.5% chance)": "Spear",
+        "related_skill": "Carving",
+        "tool_for_higher_level": "Axe",
+    },
+    "Ore": {
+        "output_item": "Whetstone",
+        "rare_output_item (2.5% chance)": "Wand",
+        "related skill": "Prospecting",
+        "tool_for_higher_level": "Pickaxe",
+    },
+    "Crystal": {
+        "output_item": "Runes",
+        "rare_output_item (2.5% chance)": "Bow",
+        "related skill": "Alchemy",
+        "tool_for_higher_level": "Chisel",
+    },
+}
+
+NPC_TABLE = {
+    "Passive": {
+        "behavior": "Never attacks players",
+        "spawn_location": "Map edges",
+        "level_range": "Low level",
+    },
+    "Neutral": {
+        "behavior": "Attacks players only when be attacked",
+        "spawn_location": "Map edges and central areas",
+        "level_range": "Medium level",
+    },
+    "Aggressive": {
+        "behavior": "Attacks players on sight",
+        "spawn_location": "Central areas",
+        "level_range": "High level",
+    },
+}
+
+COMBAT_TABLE = {
+    "Melee": {
+        "weapons": "Spear",
+        "ammunition": "Whetstone",
+        "skill": "Melee",
+        "countered_style": "Range",
+    },
+    "Range": {
+        "weapons": "Bow",
+        "ammunition": "Arrow",
+        "skill": "Range",
+        "countered_style": "Mage",
+    },
+    "Mage": {
+        "weapons": "Wand",
+        "ammunition": "Runes",
+        "skill": "Mage",
+        "countered_style": "Melee",
+    },
+}
+
+ITEM_TABLE = {
+    "Spear": {
+        "type": "Weapon",
+        "function": "Increase Melee attack",
+        "source_resource": "Tree",
+        "skill": "Melee",
+    },
+    "Bow": {
+        "type": "Weapon",
+        "function": "Increase Range attack",
+        "source_resource": "Crystal",
+        "skill": "Range",
+    },
+    "Wand": {
+        "type": "Weapon",
+        "function": "Increase Mage attack",
+        "source_resource": "Ore",
+        "skill": "Mage",
+    },
+    "Whetstone": {
+        "type": "Ammunition",
+        "function": "Increase Melee attack",
+        "source_resource": "Ore",
+        "skill": "Melee",
+    },
+    "Arrow": {
+        "type": "Ammunition",
+        "function": "Increase Range attack",
+        "source_resource": "Tree",
+        "skill": "Range",
+    },
+    "Runes": {
+        "type": "Ammunition",
+        "function": "Increase Mage attack",
+        "source_resource": "Crystal",
+        "skill": "Mage",
+    },
+    "Hat": {
+        "type": "Armor",
+        "function": "Increase defense",
+        "body_part": "Hat",
+        "source_resource": "None",
+        "skill": "Any",
+    },
+    "Top": {
+        "type": "Armor",
+        "function": "Increase defense",
+        "body_part": "Top",
+        "source_resource": "None",
+        "skill": "Any",
+    },
+    "Bottom": {
+        "type": "Armor",
+        "function": "Increase defense",
+        "body_part": "Bottom",
+        "source_resource": "None",
+        "skill": "Any",
+    },
+    "Rod": {
+        "type": "Tool",
+        "function": "Increase Fish harvest yield",
+        "source_resource": "None",
+        "skill": "Fishing",
+    },
+    "Gloves": {
+        "type": "Tool",
+        "function": "Increase Herb harvest yield",
+        "source_resource": "None",
+        "skill": "Herbalism",
+    },
+    "Axe": {
+        "type": "Tool",
+        "function": "Increase Tree harvest yield",
+        "source_resource": "None",
+        "skill": "Carving",
+    },
+    "Pickaxe": {
+        "type": "Tool",
+        "function": "Increase Ore harvest yield",
+        "source_resource": "None",
+        "skill": "Prospecting",
+    },
+    "Chisel": {
+        "type": "Tool",
+        "function": "Increase Crystal harvest yield",
+        "source_resource": "None",
+        "skill": "Alchemy",
+    },
+    "Ration": {
+        "type": "Consumable",
+        "function": "Restore Food and Water",
+        "source_resource": "Fish",
+        "skill": "Any",
+    },
+    "Potion": {
+        "type": "Consumable",
+        "function": "Restore Health",
+        "source_resource": "Herb",
+        "skill": "Any",
+    },
+}
+
+SKILL_TABLE = {
+    "Melee": {
+        "combat_style": "Melee",
+        "weapons": "Spear",
+        "ammunition": "Whetstone",
+        "improvement_method": "Attack with Melee style",
+    },
+    "Range": {
+        "combat_style": "Range",
+        "weapons": "Bow",
+        "ammunition": "Arrow",
+        "improvement_method": "Attack with Range style",
+    },
+    "Mage": {
+        "combat_style": "Mage",
+        "weapons": "Wand",
+        "ammunition": "Runes",
+        "improvement_method": "Attack with Mage style",
+    },
+    "Fishing": {
+        "resource": "Fish",
+        "tool": "Rod",
+        "improvement_method": "Harvest Fish",
+    },
+    "Herbalism": {
+        "resource": "Herb",
+        "tool": "Gloves",
+        "improvement_method": "Harvest Herb",
+    },
+    "Carving": {
+        "resource": "Tree",
+        "tool": "Axe",
+        "improvement_method": "Harvest Tree",
+    },
+    "Prospecting": {
+        "resource": "Ore",
+        "tool": "Pickaxe",
+        "improvement_method": "Harvest Ore",
+    },
+    "Alchemy": {
+        "resource": "Crystal",
+        "tool": "Chisel",
+        "improvement_method": "Harvest Crystal",
+    },
+}

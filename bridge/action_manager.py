@@ -11,7 +11,6 @@ from constant import (
     NPC_TYPE_ID_TO_NAME,
     DIRECTION_TO_INDEX,
     ATTACK_STYLE_TO_INDEX,
-    PASSABLE_TILE,
     RESOURCE_TILE,
 )
 
@@ -66,7 +65,7 @@ class ActionManager:
         self.area_space = AREA_SPACE
         self.npc_type_id_to_name = NPC_TYPE_ID_TO_NAME
         self.attack_style_to_index = ATTACK_STYLE_TO_INDEX
-        self.passable_tile = PASSABLE_TILE
+        # self.passable_tile = PASSABLE_TILE
         self.resource_tile = RESOURCE_TILE
 
         self.path_find_depth = path_find_depth

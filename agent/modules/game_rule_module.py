@@ -10,7 +10,7 @@ sys.path.append(parent_dir)
 grandparent_dir = os.path.dirname(parent_dir)
 sys.path.append(grandparent_dir)
 
-from game_prompt import (
+from game_rule import (
     RESOURCE_DETAIL,
     COMBAT_DETAIL,
     ITEM_DETAIL,

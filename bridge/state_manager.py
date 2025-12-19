@@ -8,14 +8,11 @@ from constant import (
     ITEM_NAME_TO_ID,
     AREA_SPACE,
     NPC_TYPE_ID_TO_NAME,
-    DIRECTION_TO_INDEX,
-    ATTACK_STYLE_TO_INDEX,
-    PASSABLE_TILE,
+    HARVESTED_NAME_TO_RESOURCE_NAME,
     RESOURCE_TILE,
-    IMPASSABLE_TILE,
+    IMPASSIBLE_TILE,
 )
-from utils.path_utils import a_star_bounded as aStar
-from utils.path_utils import l1
+from utils.path_utils import a_star_bounded as aStar, l1, get_bounds
 
 
 def which_part(start, end, x):
@@ -61,8 +58,11 @@ class StateManager:
             "mage": self.config.COMBAT_MAGE_REACH,
         }
         self.npc_type_id_to_name = NPC_TYPE_ID_TO_NAME
-        self.passable_tile = PASSABLE_TILE
+        self.impassible_tile = IMPASSIBLE_TILE
         self.resource_tile = RESOURCE_TILE
+        self.harvested_tile = HARVESTED_NAME_TO_RESOURCE_NAME.keys()
+        self.harvested_name_to_resource_name = HARVESTED_NAME_TO_RESOURCE_NAME
+        self.visited_positions = set()
 
         self.position_to_areas = None
         self.area_table = {
@@ -78,6 +78,9 @@ class StateManager:
         }
         self.areas = AREA_SPACE
         # self.entity_id_to_index = None
+
+    def reset(self):
+        self.visited_positions = set()
 
     def get_map_region(self, obs):
         """
@@ -162,6 +165,7 @@ class StateManager:
         ego_agent_info["title_type"] = tile_resource
         ego_agent_info["water_around"] = False
         ego_agent_info["fish_around"] = False
+        self.visited_positions.add((ego_agent_info["row"], ego_agent_info["col"]))
         four_directions = [(0, 1), (0, -1), (1, 0), (-1, 0)]
         for direction in four_directions:
             neighbor_pos = (ego_agent_info["row"] + direction[0], ego_agent_info["col"] + direction[1])
@@ -204,145 +208,117 @@ class StateManager:
         return ego_agent_info
 
     def get_fog_info(self, obs):
-        """
-        fog_info示例如下:
-        "status": "in_fog",
-        "postion": 1.0,
-        "damage": 1.0
-        """
         assert self.config.DEATH_FOG_ONSET
-        pos_r = obs.agent.row
-        pos_c = obs.agent.col
-        fog_info = {area: {"status": "out_of_fog", "damage": 0} for area in self.areas}
+        fog_info = {
+            area: {"out_of_fog_count": 0, "on_the_edge_count": 0, "in_fog_count": 0, "in_safety_count": 0}
+            for area in self.areas
+        }
         for tile in obs.tiles:
             area = self.get_obs_area(obs, tile[0], tile[1])
             fog_value = float(self.env.realm.fog_map[tile[0], tile[1]])
             if fog_value > 0.5:
-                if fog_info[area]["status"] != "in_safety":
-                    fog_info[area]["status"] = "in_fog"
-                    fog_info[area]["damage"] = abs(fog_value)
-            elif math.isclose(fog_value, 0.0, abs_tol=1e-10):
-                if fog_info[area]["status"] != "in_fog":
-                    fog_info[area]["status"] = "on_the_edge"
-                    fog_info[area]["damage"] = 0
-            elif fog_value < 0 and fog_value > -self.config.MAP_SIZE:
-                fog_info[area]["status"] = "in_safety"
-                fog_info[area]["damage"] = 0
-
-        # fog_value = float(self.env.realm.fog_map[pos_r, pos_c])
-        # if fog_value > 0.5:
-        #     fog_info["center"]["status"] = "in_fog"
-        #     fog_info["center"]["damage"] = abs(fog_value)
-        # elif math.isclose(fog_value, 0.0, abs_tol=1e-10):
-        #     if fog_info["center"]["status"] != "in_fog":
-        #         fog_info["center"]["status"] = "on_the_edge"
-        #         fog_info["center"]["damage"] = 0
-        # elif fog_value < 0 and fog_value == -self.config.MAP_SIZE:
-        #     if fog_info["center"]["status"] != "in_fog":
-        #         fog_info["center"]["status"] = "in_safety"
-        #         fog_info["center"]["damage"] = 0
-
+                fog_info[area]["in_fog_count"] += 1
+            elif math.isclose(fog_value, 0.0):
+                fog_info[area]["on_the_edge_count"] += 1
+            elif fog_value < 0:
+                if math.isclose(fog_value, -self.config.MAP_SIZE):
+                    fog_info[area]["in_safety_count"] += 1
+                else:
+                    fog_info[area]["out_of_fog_count"] += 1
         return fog_info
 
     def get_resource_info(self, obs):
-        resource_info = {area: [] for area in self.areas}
-        resource_visible_count = {area: defaultdict(int) for area in self.areas}
-        resource_access_count = {area: None for area in self.areas}
-        # resource_distance = {}
-
-        for tile in obs.tiles:
-            resource_name = self.material_id_to_name[tile[2]]
-            area = self.get_obs_area(obs, tile[0], tile[1])
-
-            if resource_name in self.resource_tile:
-                resource_visible_count[area][resource_name] += 1
-            if resource_name == "Void":  # 只用于统计边界
-                resource_visible_count[area][resource_name] += 1
-
-        for area in self.areas:
-            resource_access_count[area] = {k: v for k, v in resource_visible_count[area].items() if v > 0}
-
+        # 信息：各个资源的名称和数量
+        # 资源属性：名称、数量、是否是资源、原始资源、是否可通行
+        resource_info = {area: {} for area in self.areas}
+        bounds = get_bounds(obs.tiles)
         start_pos = (obs.agent.row, obs.agent.col)
 
-        tiles = obs.tiles
-        min_map_x = np.min(tiles[:, 0])
-        min_map_y = np.min(tiles[:, 1])
-        max_map_x = np.max(tiles[:, 0])
-        max_map_y = np.max(tiles[:, 1])
-        bounds = (min_map_x, max_map_x, min_map_y, max_map_y)
+        for tile in obs.tiles:
+            area = self.get_obs_area(obs, tile[0], tile[1])
+            material_name = self.material_id_to_name[tile[2]]
 
-        for resource_name in resource_visible_count.keys():
-            if resource_name == "Void":
-                resource_access_count[area][resource_name] = resource_visible_count[area][resource_name]
-                continue
-
-            # distance_list = []
-            for tile in obs.tiles:
-                area = self.get_obs_area(obs, tile[0], tile[1])
-                # resource_access_count[area]["tile_num"] += 1
-                target_pos_list = []
-                if self.material_id_to_name[tile[2]] == resource_name:
-                    if resource_name in self.passable_tile:
-                        target_pos_list.append((tile[0], tile[1]))
-                    else:
-                        # 处理水和鱼等不可通行的资源
-                        four_direction = [(0, 1), (0, -1), (1, 0), (-1, 0)]
-                        for direction in four_direction:
-                            candidate_pos = (tile[0] + direction[0], tile[1] + direction[1])
-                            if (
-                                self.env.realm.map.is_valid_pos(candidate_pos)
-                                and not self.env.realm.map.tiles[candidate_pos].impassible
-                            ):
-                                target_pos_list.append(candidate_pos)
-                    if target_pos_list:
-                        distances = []
-                        for target_pos in target_pos_list:
-                            _, distance = aStar(self.env.realm.map, start_pos, target_pos, bounds=bounds)
-                            distances.append(distance)
-                        min_distance = min(distances)
-                        if min_distance != float("inf"):
-                            resource_access_count[area][resource_name] += 1
-        for area in self.areas:
-            for resource_name in resource_access_count[area].keys():
-                resource_info[area].append(
-                    {
-                        # "id": self.material_name_to_id[resource_name],
-                        "name": resource_name,
-                        # "count": resource_visible_count[resource_name],
-                        "access_count": resource_access_count[area][resource_name],
-                        # "distance": resource_distance[resource_name],
+            # 统计资源是否可达
+            reachable = False
+            target_pos_list = []
+            if material_name not in self.impassible_tile:
+                target_pos_list.append((tile[0], tile[1]))
+            else:
+                # 处理水和鱼等不可通行的资源
+                four_direction = [(0, 1), (0, -1), (1, 0), (-1, 0)]
+                for direction in four_direction:
+                    candidate_pos = (tile[0] + direction[0], tile[1] + direction[1])
+                    if (
+                        self.env.realm.map.is_valid_pos(*candidate_pos)
+                        and not self.env.realm.map.tiles[candidate_pos].impassible
+                    ):
+                        target_pos_list.append(candidate_pos)
+            if target_pos_list:
+                distances = []
+                for target_pos in target_pos_list:
+                    _, distance = aStar(self.env.realm.map, start_pos, target_pos, bounds=bounds)
+                    distances.append(distance)
+                min_distance = min(distances)
+                if min_distance != float("inf"):
+                    reachable = True
+            if reachable:
+                if material_name in resource_info[area].keys():
+                    resource_info[area][material_name]["count"] += 1
+                else:
+                    tile_info = {
+                        "count": 1,
+                        "is_resource": material_name in self.resource_tile,
+                        "passible": material_name not in self.impassible_tile,
                     }
-                )
+                    if material_name in self.harvested_tile:
+                        tile_info["original_resource"] = self.harvested_name_to_resource_name[material_name]
+                    resource_info[area][material_name] = tile_info
+
+        # 返回格式为：
+        # "resource": {
+        #     "northwest": {
+        #         "Foliage": {
+        #             "number": 10,
+        #             "is_resource": True,
+        #             "passible": True
+        #         },
+        #         "Ore": {
+        #             "number": 5,
+        #             "is_resource": True,
+        #             "passible": True
         return resource_info
 
-    def get_reachable_area_info(self, obs):
-        
-        tiles = obs.tiles
-        min_map_x = np.min(tiles[:, 0])
-        min_map_y = np.min(tiles[:, 1])
-        max_map_x = np.max(tiles[:, 0])
-        max_map_y = np.max(tiles[:, 1])
-        bounds = (min_map_x, max_map_x, min_map_y, max_map_y)
-    
-        reachable_area_info = {area: True for area in self.areas}
-        unreachable_tile_count = {area: 0 for area in self.areas}
-        all_tile_count = {area: 0 for area in self.areas}
+    def get_passible_info(self, obs):
+        bounds = get_bounds(obs.tiles)
+        area_reachable_tile_count = {area: 0 for area in self.areas}
+        area_passible_tile_count = {area: 0 for area in self.areas}
+        area_visited_tile_count = {area: 0 for area in self.areas}
+        start_pos = (obs.agent.row, obs.agent.col)
         for tile in obs.tiles:
-            resource_name = self.material_id_to_name[tile[2]]
             area = self.get_obs_area(obs, tile[0], tile[1])
-            all_tile_count[area] += 1
-            if resource_name in IMPASSABLE_TILE or resource_name == "Void":
-                unreachable_tile_count[area] += 1
-            else:
-                start_pos = (obs.agent.row, obs.agent.col)
-                target_pos = (tile[0], tile[1])
-                _, distance = aStar(self.env.realm.map, start_pos, target_pos, bounds=bounds)
-                if distance == float("inf"):
-                    unreachable_tile_count[area] += 1
-        for area in self.areas:
-            if unreachable_tile_count[area] / all_tile_count[area] >= 0.8:
-                reachable_area_info[area] = False
-        return reachable_area_info
+            # 统计是否可通行
+            if (
+                self.env.realm.map.is_valid_pos(tile[0], tile[1])
+                and not self.env.realm.map.tiles[(tile[0], tile[1])].impassible
+            ):
+                area_passible_tile_count[area] += 1
+            # 统计是否可到达
+            target_pos = (tile[0], tile[1])
+            _, distance = aStar(self.env.realm.map, start_pos, target_pos, bounds=bounds)
+            if distance != float("inf"):
+                area_reachable_tile_count[area] += 1
+            if (tile[0], tile[1]) in self.visited_positions:
+                area_visited_tile_count[area] += 1
+        passible_info = {
+            area: {
+                "reachable_tile_count": area_reachable_tile_count[area],
+                "passible_tile_count": area_passible_tile_count[area],
+                "visited_tile_count": area_visited_tile_count[area],
+            }
+            for area in self.areas
+        }
+
+        return passible_info
 
     def get_entity_info(self, obs):
         entity_info = {area: [] for area in self.areas}
@@ -383,8 +359,6 @@ class StateManager:
                 entity_pos = (entity[2], entity[3])
                 entity_area = self.get_obs_area(obs, entity[2], entity[3])
 
-                # _, distance = aStar(self.env.realm.map, ego_pos, entity_pos)
-
                 entity_attackable = False
                 player_attackable = False
 
@@ -404,7 +378,7 @@ class StateManager:
                         "position": entity_pos,
                         "health": entity[12],
                         "level": max(melee_level, range_level, mage_level),
-                        # "distance": distance,
+                        "distance": straight_dis,
                         "player_attackable": player_attackable,
                         "entity_attackable": entity_attackable,
                         # 添加战斗状态信息
@@ -424,7 +398,7 @@ class StateManager:
                 item_name = self.item_index_to_name[item[1]]
                 item_level = item[3]
                 if item_name in ["Hat", "Top", "Bottom"]:
-                    is_equipped = item[14]
+                    is_equipped = bool(item[14])
                     melee_defense = item[9]
                     range_defense = item[10]
                     mage_defense = item[11]
@@ -450,7 +424,7 @@ class StateManager:
                 item_name = self.item_index_to_name[item[1]]
                 item_level = item[3]
                 if item_name in ["Spear", "Bow", "Wand"]:
-                    is_equipped = item[14]
+                    is_equipped = bool(item[14])
                     melee_attack = item[6]
                     range_attack = item[7]
                     mage_attack = item[8]
@@ -477,7 +451,7 @@ class StateManager:
                 item_level = item[3]
 
                 if item_name in ["Rod", "Gloves", "Pickaxe", "Axe", "Chisel"]:
-                    is_equipped = item[14]
+                    is_equipped = bool(item[14])
                     melee_defense = item[9]
                     range_defense = item[10]
                     mage_defense = item[11]
@@ -503,7 +477,7 @@ class StateManager:
                 item_name = self.item_index_to_name[item[1]]
                 item_level = item[3]
                 if item_name in ["Whetstone", "Arrow", "Runes"]:
-                    is_equipped = item[14]
+                    is_equipped = bool(item[14])
                     quantity = item[5]
                     melee_attack = item[6]
                     range_attack = item[7]
@@ -553,7 +527,7 @@ class StateManager:
         else:
             state_info["fog"] = None
         state_info["resource"] = self.get_resource_info(obs)
-        state_info["reachable_area"] = self.get_reachable_area_info(obs)
+        state_info["passible"] = self.get_passible_info(obs)
         state_info["entity"] = self.get_entity_info(obs)
         state_info["armor"] = self.get_armor_info(obs)
         state_info["weapon"] = self.get_weapon_info(obs)

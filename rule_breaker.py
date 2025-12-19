@@ -1,6 +1,6 @@
 import numpy as np
 import re
-from game_prompt import RESOURCE_DETAIL, COMBAT_DETAIL, ITEM_DETAIL, PROFESSION_DETAIL
+from game_rule import RESOURCE_DETAIL, COMBAT_DETAIL, ITEM_DETAIL, PROFESSION_DETAIL
 
 # import nltk
 

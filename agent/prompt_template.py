@@ -10,7 +10,7 @@ import json
 def generate_plan_system_prompt(plan_response_format, game_state=None):
     plan_response_format = json.dumps(plan_response_format, indent=4)
     if game_state:
-        prompt_template = f"You are an AI assistant in an open-world survival game. I need you help me generate a plan for achieving my long-term goal. I will provide my long-term goal, descriptions of the game mechanics and the current game state."
+        prompt_template = f"You are an AI assistant in an open-world survival game. I need you help me generate a plan for achieving my long-term goal. I will provide my long-term goal, descriptions of the game mechanics and the current game state (provided as JSON)."
     else:
         prompt_template = f"You are an AI assistant in an open-world survival game. I need you help me generate a plan for achieving my long-term goal. I will provide my long-term goal, descriptions of the game mechanics. "
     prompt_template += f"Your entire response must be a single valid JSON object in the following format:\n{plan_response_format}\nDo not include any text outside of the JSON object.\nNote: *Survival* is an absolute priority. "
@@ -20,7 +20,7 @@ def generate_plan_system_prompt(plan_response_format, game_state=None):
 
 def generate_task_system_prompt(task_response_format, strategies=None, previous_task=None):
     task_response_format = json.dumps(task_response_format, indent=4)
-    prompt_template = f"You are an AI assistant in an open-world survival game. I need you help me set a reasonable short-term task to complete my long-term goal. I will provide my long-term goal, descriptions of the game mechanics and the current game state."
+    prompt_template = f"You are an AI assistant in an open-world survival game. I need you help me set a reasonable short-term task to complete my long-term goal. I will provide my long-term goal, descriptions of the game mechanics and the current game state (provided as JSON)."
     if strategies:
         prompt_template += "What's more , I will also provide some strategies that can help you set the task. "
     if previous_task:
@@ -56,7 +56,7 @@ def generate_action_system_prompt(
     # if plan:
     #     prompt_template += "I will provide my long-term goal, my plan for achieving the long-term goal, descriptions of the game mechanics, the current game state, and the available actions. "
     # else:
-    prompt_template += "I will provide the information needed for decision-making, maybe including descriptions of the game mechanics, the current game state, and the available actions. "
+    prompt_template += "I will provide the information needed for decision-making, maybe including descriptions of the game mechanics, the current game state (provided as JSON), and the available actions. "
 
     prompt_template += "The game state includes my region on the map, information about the resources and entities (NPCs or other players) within my field of view, and my inventory and skill levels. The field of view is divided into nine areas: center, north, northeast, east, southeast, south, southwest, west, and northwest. This division indicates the precise location of observed objects and assists players in determining the direction of exploration. "
 
@@ -86,9 +86,9 @@ def generate_action_verify_system_prompt(
 ):
     verifier_response_format = json.dumps(verifier_response_format, indent=4)
     if plan:
-        prompt_template = f"You are an AI assistant in an open-world survival game. I need you help me evaluate whether the candidate action I have selected can (1) ensure my survival; (2) follow my plan; (3) help me complete my long-term goal as quickly as possible. I will provide my long-term goal, my plan for achieving the long-term goal, descriptions of the game mechanics and the current game state. "
+        prompt_template = f"You are an AI assistant in an open-world survival game. I need you help me evaluate whether the candidate action I have selected can (1) ensure my survival; (2) follow my plan; (3) help me complete my long-term goal as quickly as possible. I will provide my long-term goal, my plan for achieving the long-term goal, descriptions of the game mechanics and the current game state (provided as JSON). "
     else:
-        prompt_template = f"You are an AI assistant in an open-world survival game. I need you help me evaluate whether the candidate action I have selected can (1) ensure my survival; (2) help me complete my long-term goal as quickly as possible. I will provide my long-term goal, descriptions of the game mechanics and the current game state. "
+        prompt_template = f"You are an AI assistant in an open-world survival game. I need you help me evaluate whether the candidate action I have selected can (1) ensure my survival; (2) help me complete my long-term goal as quickly as possible. I will provide my long-term goal, descriptions of the game mechanics and the current game state (provided as JSON). "
     prompt_template += "The game state includes my region on the map, information about the resources and entities (NPCs or other players) within my field of view, and my inventory and skill levels. The field of view is divided into nine areas: center, north, northeast, east, southeast, south, southwest, west, and northwest. This division indicates the precise location of observed objects and assists players in determining optimal movement directions."
     # if strategies:
     #     prompt_template += "What's more, I will also provide some strategies that can help you evaluate the action. "

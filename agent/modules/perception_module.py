@@ -1,6 +1,7 @@
 import sys
 import os
 import re
+import json
 
 current_dir = os.path.abspath(__file__)
 sys.path.append(current_dir)
@@ -11,14 +12,16 @@ sys.path.append(grandparent_dir)
 
 from nmmo.lib import utils
 from constant import AREA_SPACE
+from game_rule import RESOURCE_TABLE, NPC_TABLE, COMBAT_TABLE, ITEM_TABLE, SKILL_TABLE
 
 
 class PerceptionModule:
-    def __init__(self, config, llm_client, save_path, add_tick_info=True, debug=False):
+    def __init__(self, config, llm_client, save_path, add_tick_info=True, only_use_resource_tile=False, debug=False):
         self.config = config
         self.llm_client = llm_client
         self.save_path = save_path
         self.add_tick_info = add_tick_info
+        self.only_use_resource_tile = only_use_resource_tile
         self.debug = debug
         self.attack_range = {
             "melee": self.config.COMBAT_MELEE_REACH,
@@ -38,47 +41,65 @@ class PerceptionModule:
         }
 
     def perceive(self, state_info, tick, horizon):
-
         description = "## Basic Information\n"
+        state_description = {}
 
         if self.add_tick_info:
-            description += f"Now is tick {tick}/{horizon}. \n"
-
-        description += self.generate_position_description(state_info["agent"])
-
+            state_description["tick"] = f"{tick}/{horizon}"
+        description += json.dumps(state_description) + "\n"
         # 添加健康信息
-        description += self.generate_health_description(state_info["agent"]) + "\n"
+        meta_description = (
+            "Player has Health, Food, and Water, each with a maximum value of 100. Food/Water drop 10 each tick. If Water or Food is 0, the player loses 10 Health per tick; if both are 0, Health loses 20 per tick. Health regenerates 10 per tick if food and water are above 50. \n Here is my current health status:\n"
+            + self.generate_health_description(state_info["agent"])
+        )
+        description += meta_description + "\n"
 
-        # 添加观察信息
+        # 添加宏观位置信息
+        position_description = f"The tile is the basic unit that makes up the map. The game map has a total size of {self.config.MAP_CENTER} × {self.config.MAP_CENTER} tiles. Each tile corresponds to a coordinate. My character can move only one tile per tick. The entire game map is roughly divided into nine regions: the central region, eastern region, western region, northern region, southern region, northeastern region, southeastern region, northwestern region, and southwestern region. Players are informed of the coordinate and region they are in to clarify their macro-level position on the map. "
+
+        if self.config.DEATH_FOG_ONSET:
+            position_description += f"Additionally, there is a death fog mechanism in the game. The fog area appears at time {self.config.DEATH_FOG_ONSET} and gradually expands from the edges of the map toward the center. The fog can damage player within it. A permanent safety area exists at the center of the map, which is never covered by the fog. The position information includes the distance to the safety zone. \n Here is my current position information:\n"
+
+        position_description += self.generate_position_description(state_info["agent"])
+        description += position_description + "\n"
+
+        # 添加资源、实体、战斗等观测信息
+        resource_description = "There are various types of resources on the map. Players can obtain corresponding items and improve related skills by harvesting resources. Equipping related tools can improve the quality of harvested items. The harvested item level is the related tool's level + 1. Here is the information about different resources and their corresponding output items, skills, and tools.\n"
+        resource_description += json.dumps(RESOURCE_TABLE, indent=4)
+        description += resource_description + "\n"
+
+        if self.config.NPC_SYSTEM_ENABLED:
+            entity_description = "Entities on the map include NPCs and other players. NPCs are divided into passive, neutral, and aggressive types. Here is the information about different NPC types:\n"
+            entity_description += json.dumps(NPC_TABLE, indent=4)
+            description += json.dumps(entity_description) + "\n"
+
+        if self.config.COMBAT_SYSTEM_ENABLED:
+            commbat_description = "Combat may occur between entities. The outcome of combat depends on the entities' attack and defense values. The game has three combat styles: Melee, Range, and Mage. Players can use any combat style, while NPCs can only use one combat style. Equipping specific weapons and ammunition, improving combat skills, and using a combat style that counters the enemy will all increase the attack value of the corresponding style. The weapons, ammunition, skills, and countered combat styles for each combat style are as follows:\n"
+
+            commbat_description += json.dumps(COMBAT_TABLE, indent=4)
+
+            description += commbat_description + "\n"
+
+        description += "In this game, players can only view an area of {view_size} × {view_size} tiles centered on themselves, which is also divided into nine areas: center, eastern, western, northern, southern, northeastern, southeastern, northwestern, and the southwestern area. Players can only directly harvest resources or attack other entities in the center area. Moving to another area makes that area the new center area. Some areas are difficult to traverse. This may be because they contain many impassable tiles (such as rock tiles), or because many tiles are unreachable from the character's current position (for example, blocked by water or stone tiles). Here is information about the resources, entities, fog, and passability of the nine areas in the observation space: \n"
+
         description += (
-            "## Observation Information\n"
-            + self.generate_observation_description(
-                state_info["agent"],
+            self.generate_observation_description(
                 state_info["resource"],
                 state_info["entity"],
-                state_info["reachable_area"],
+                state_info["passible"],
                 state_info["fog"],
             )
             + "\n"
         )
-
-        # available_action["Move"] = self.generate_available_move(state_info["resource"], state_info["entity"])
-        # 添加NPC和敌人信息
-        if self.config.COMBAT_SYSTEM_ENABLED:
-            description += "## Ego's Combat Information\n" + self.generate_ego_combat_description(state_info["agent"]) + "\n"
-            description += (
-                "## Other's Combat Information\n"
-                + self.generate_other_combat_description(state_info["agent"], state_info["entity"])
-                + "\n"
-            )
-            # available_action["Attack"] = self.generate_available_attack(state_info["agent"], state_info["entity"])
-
         if self.config.ITEM_SYSTEM_ENABLED:
+
+            item_description = "Items are very helpful for player survival and combat. Based on their functions, acquisition methods, and skill requirements, items are divided into weapons, ammunition, armor, tools, and consumables. Armor and tools can only be obtained by killing other NPCs or players as drops. Weapons, ammunition, armor, and tools must be equipped to take effect. High-level items require the corresponding skills to reach the same level in order to be used. The names, functions, acquisition methods, and corresponding skill of all items are listed below:\n"
+
+            item_description += json.dumps(ITEM_TABLE, indent=4)
+            description += item_description + "\n" + "Here is my current inventory information:\n"
             description += (
-                "## Inventory Information\n"
-                + self.generate_inventory_description(
+                self.generate_item_description(
                     state_info["capacity"],
-                    state_info["agent"],
                     state_info["armor"],
                     state_info["weapon"],
                     state_info["tool"],
@@ -88,429 +109,165 @@ class PerceptionModule:
                 + "\n"
             )
 
-            if self.config.EQUIPMENT_SYSTEM_ENABLED:
-                description += "## Equipment Information\n" + (
-                    self.generate_equipment_description(
-                        state_info["armor"],
-                        state_info["weapon"],
-                        state_info["tool"],
-                        state_info["ammunition"],
-                    )
-                    + "\n"
-                )
-
         if self.config.PROGRESSION_SYSTEM_ENABLED:
-            description += "## Skill Information\n" + self.generate_skill_description(state_info["agent"])
-        return description
+            skill_description = "Higher skill levels allow players to obtain better yields when harvesting resources, use higher-level equipment, and deal greater damage. The maximum level of items that a player can harvest or use is equal to the relevant skill level plus one. Below are the resources affected by each skill, the items they enable, and the ways in which the skills are leveled up:\n"
+            skill_description += json.dumps(SKILL_TABLE, indent=4)
+            description += skill_description + "\nHere is my current skill levels:\n"
+            description += self.generate_skill_description(state_info["agent"]) + "\n"
 
-    def generate_position_description(self, ego_agent_info):
-        region = ego_agent_info["region"]
-        dist_to_center = ego_agent_info["dist_to_center"]
-        description = f"I am currently located in the {region} region of the map. My distance to the center point of the map is {dist_to_center}. \n"
-        if self.config.DEATH_FOG_ONSET:
-            if ego_agent_info["current_tick"] >= int(self.config.DEATH_FOG_ONSET):
-                description += "The fog area is expanding. "
-            else:
-                description += "The fog area has not started to expand yet. "
-            if ego_agent_info["dist_to_safety_zone"] <= 0:
-                description += "I am currently in the safety zone. "
-            else:
-                description += f"My distance to the safety zone is {ego_agent_info['dist_to_safety_zone']}. "
-        description += "\n"
-        return description
-
-    def generate_observation_description(self, ego_agent_info, resource_info, entity_info, reachable_area_info, fog_info):
-        region = ego_agent_info["region"]
-        description = "I am in the center area. The information of the surrounding areas is as follows: \n"
-        if not resource_info and not entity_info and not fog_info:
-            return description + "No detailed area information is available.\n"
-
-        def format_resource(area):
-            if not resource_info[area]:
-                return None
-            description = ""
-            for resource in resource_info[area]:
-                if resource["name"] == "Void":
-                    continue
-                if description == "":
-                    description += f"{resource['access_count']} {resource['name']} tiles"
-                else:
-                    description += f", {resource['access_count']} {resource['name']} tiles"
-            if description == "":
-                description += "No resource is in this area"
-            description += ". "
-            return description
-
-        def format_entity(area):
-            if not entity_info[area]:
-                return None
-            description = ""
-            for entity in entity_info[area]:
-                description += f"{entity['name']}, Type: {entity['type']}, Style: {entity['style']}, Health: {entity['health']}, Level: {entity['level']}. "
-                if entity["type"] == "aggressive":
-                    description += f" NOTE: This NPC is dangerous."
-                # if entity["entity_attackable"]:
-                #     description += f" {entity['name']} is in my attack range. "
-            return description
-
-        def format_reachable(area):
-            if not reachable_area_info[area]:
-                return "No path leads to this area as it is blocked by water or stones, or located beyond the map boundary. "
-            else:
-                return None
-
-        def format_fog(area):
-            if not fog_info:
-                return None
-            description = ""
-            if fog_info[area]["status"] == "out_of_fog":
-                description += f"This area has not yet been covered by fog. "
-            elif fog_info[area]["status"] == "in_fog":
-                description += f"This area is currently covered by fog. "
-                if area == "center" and fog_info[area]["damage"] > 0:
-                    description += f"My health decreases by {int(fog_info[area]['damage'])} per tick. "
-            elif fog_info[area]["status"] == "on_the_edge":
-                description += f"This area is on the edge of the fog. "
-            elif fog_info[area]["status"] == "in_safety":
-                description += f"This area is in the safe zone. "
-            return description
-
-        def format_direction_to_center(area):
-            if region == "center":
-                return None
-            if area in self.directions_to_center[region]:
-                return f"Moving to this area will bring you closer to the center of the map."
-            else:
-                return None
-
-        for area in self.areas:
-            area_description = f"The {area} area: \n"
-            if not reachable_area_info[area]:
-                area_description += (
-                    "No path leads to this area as it is blocked by water or stones, or located beyond the map boundary. "
-                )
-                description += area_description + "\n"
-                continue
-            fog_description = format_fog(area)
-            resource_description = format_resource(area)
-            entity_description = format_entity(area)
-            direction_description = format_direction_to_center(area)
-            # reachable_description = format_reachable(area)
-            if fog_description:
-                area_description += "Fog Status: \n"
-                area_description += fog_description + "\n"
-            if resource_description:
-                area_description += "Resources: \n"
-                area_description += resource_description + "\n"
-            else:
-                area_description += "No resource is in this area. \n"
-            if entity_description:
-                area_description += "NPCs or Players: \n"
-                area_description += entity_description + "\n"
-            else:
-                area_description += "No NPC or Player is in this area. \n"
-            # if reachable_description:
-            #     area_description += reachable_description + "\n"
-            if direction_description:
-                area_description += direction_description + "\n"
-
-            description += area_description + "\n"
-        return description
-
-    def generate_ego_combat_description(self, ego_agent_info):
-        if ego_agent_info["agent_in_combat"]:
-            description = "I am in a combat. \n"
-            if ego_agent_info["target_of_attack"]:
-                description += (
-                    f"I am attacking {ego_agent_info['target_of_attack']} with damage {ego_agent_info['attacker_damage']}. \n"
-                )
-            if ego_agent_info["attacker"]:
-                description += f"I am attacked by {ego_agent_info['attacker']} with damage {ego_agent_info['ego_damage']}.\n"
-
-            if not ego_agent_info["attacker"] and not ego_agent_info["target_of_attack"]:
-                description += f"I just finished a combat\n"
-        else:
-            description = f"I am not currently in combat. \n"
-        return description
-
-    def generate_other_combat_description(self, ego_agent_info, entity_info):
-        description = ""
-        for area in self.areas:
-            for entity in entity_info[area]:
-                if entity["in_combat"]:
-                    description += f"{entity['name']} is in combat.\n"
-                    if entity["target_of_attack"]:
-                        if entity["target_of_attack"] == f"Player {ego_agent_info['id']}":
-                            description += f"{entity['name']} is attacking me.\n"
-                        else:
-                            description += f"{entity['name']} is attacking {entity['target_of_attack']}.\n"
-                    if entity["attacker"]:
-                        if entity["attacker"] == f"Player {ego_agent_info['id']}":
-                            description += f"{entity['name']} is attacked by me.\n"
-                        else:
-                            description += f"{entity['name']} is attacked by {entity['attacker']}.\n"
-        if description == "":
-            description = "No combat information observed. \n"
+        print(description)
         return description
 
     def generate_health_description(self, ego_agent_info):
-        description = f"My health is {ego_agent_info['health']}/100, my food is {ego_agent_info['food']}/100, my water is {ego_agent_info['water']}/100. \n"
-        return description
+        return json.dumps(
+            {"health": ego_agent_info["health"], "food": ego_agent_info["food"], "water": ego_agent_info["water"]}
+        )
 
-    def generate_skill_description(self, ego_agent_info):
-        description = f"My skill levels are: \n"
-        for k, v in ego_agent_info.items():
-            if "level" in k and k != "item_level":
-                skill_name = k.split("_level")[0].capitalize()
-                description += f"{skill_name} Level: {v}. \n"
-        return description
+    def generate_position_description(self, ego_agent_info):
+        description = {}
+        description["region"] = ego_agent_info["region"]
+        description["map_coordinates"] = f"({ego_agent_info['row']}, {ego_agent_info['col']})"
+        if self.config.DEATH_FOG_ONSET:
+            if ego_agent_info["dist_to_safety_zone"] <= 0:
+                description["in_safety_zone"] = True
+            else:
+                description["in_safety_zone"] = False
+                description["dist_to_safety_zone"] = ego_agent_info["dist_to_safety_zone"]
+        return json.dumps(description, indent=4)
 
-    def generate_armor_description(self, armor_info):
-        if armor_info:
-            description = ""
-            equipped_armor = [armor for armor in armor_info if armor["is_equipped"]]
+    def generate_observation_description(self, resource_info, entity_info, passible_info, fog_info):
 
-            if equipped_armor:
-                description += f"My equipped armor is: \n"
-                for armor in equipped_armor:
-                    description += f"item id: {armor['id']}, name: {armor['name']},  level: {armor['level']}, melee defense: {armor['melee_defense']}, range defense: {armor['range_defense']}, mage defense: {armor['mage_defense']}. \n"
+        description = {area: {} for area in self.areas}
+        for area in self.areas:
+            # 补充资源信息
+            if resource_info[area]:
+                description[area]["resources"] = []
+                for resource_name, this_resource_info in resource_info[area].items():
+                    if self.only_use_resource_tile and not this_resource_info["is_resource"]:
+                        continue
+                    single_resource_info = {
+                        "name": resource_name,
+                        "count": this_resource_info["count"],
+                        "is_resource": this_resource_info["is_resource"],
+                        "passible": this_resource_info["passible"],
+                    }
+                    if "original_resource" in this_resource_info:
+                        single_resource_info["original_resource"] = this_resource_info["original_resource"]
+                    description[area]["resources"].append(single_resource_info)
+                description[area]["resources"] = sorted(description[area]["resources"], key=lambda x: x["count"], reverse=True)
 
-            unequipped_armor = [armor for armor in armor_info if not armor["is_equipped"]]
-            if unequipped_armor:
-                description += f"My unequipped armor is: \n"
-                for armor in unequipped_armor:
-                    description += f"item id: {armor['id']},{armor['name']}, level: {armor['level']}, melee defense: {armor['melee_defense']}, range defense: {armor['range_defense']}, mage defense: {armor['mage_defense']}. \n"
-        else:
-            description = "I don't have any armor. \n"
-        return description
+            # 补充实体信息
+            if self.config.NPC_SYSTEM_ENABLED and entity_info[area]:
+                description[area]["entities"] = []
+                for entity in entity_info[area]:
+                    single_entity_info = {
+                        "name": entity["name"],
+                        "type": entity["type"],
+                        "combat_style": entity["style"],
+                        "health": entity["health"],
+                        "level": entity["level"],
+                        "in_combat": entity["in_combat"],
+                    }
+                    if entity["in_combat"]:
+                        single_entity_info["attacked_by"] = entity["attacker"]
+                        single_entity_info["attack_target"] = entity["target_of_attack"]
+                    description[area]["entities"].append(single_entity_info)
 
-    def generate_equipment_description(self, armor_info, weapon_info, tool_info, ammunition_info):
-        equipped_hat = [armor for armor in armor_info if armor["name"] == "Hat" and armor["is_equipped"]]
-        equipped_top = [armor for armor in armor_info if armor["name"] == "Top" and armor["is_equipped"]]
-        equipped_bottom = [armor for armor in armor_info if armor["name"] == "Bottom" and armor["is_equipped"]]
-        equipped_weapon = [weapon for weapon in weapon_info if weapon["is_equipped"]]
-        equipped_tool = [tool for tool in tool_info if tool["is_equipped"]]
-        equipped_ammunition = [ammunition for ammunition in ammunition_info if ammunition["is_equipped"]]
-        description = ""
+            # 补充迷雾信息
+            if self.config.DEATH_FOG_ONSET and fog_info[area]:
+                description[area]["fog"] = {
+                    "out_of_fog_tile_count": fog_info[area]["out_of_fog_count"],
+                    "in_fog_tile_count": fog_info[area]["in_fog_count"],
+                    "on_edge_tile_count": fog_info[area]["on_edge_count"],
+                }
+            # 补充可通行性信息
+            description[area]["visited_tile_count"] = passible_info[area]["visited_tile_count"]
+            description[area]["passible_tile_count"] = passible_info[area]["passible_tile_count"]
+            description[area]["reachable_tile_count"] = passible_info[area]["reachable_tile_count"]
+        return json.dumps(description, indent=4)
 
-        if equipped_hat:
-            armor = equipped_hat[0]
-            description += f"My Hat slot is equipped with: \nitem id: {armor['id']}, name: {armor['name']}, level: {armor['level']}, melee defense: {armor['melee_defense']}, range defense: {armor['range_defense']}, mage defense: {armor['mage_defense']}. \n"
-        else:
-            description += "My Hat slot is empty. \n"
-
-        if equipped_top:
-            armor = equipped_top[0]
-            description += f"My Top slot is equipped with: \nitem id: {armor['id']}, name: {armor['name']}, level: {armor['level']}, melee defense: {armor['melee_defense']}, range defense: {armor['range_defense']}, mage defense: {armor['mage_defense']}. \n"
-        else:
-            description += "My Top slot is empty. \n"
-
-        if equipped_bottom:
-            armor = equipped_bottom[0]
-            description += f"My Bottom slot is equipped with: \nitem id: {armor['id']}, name: {armor['name']}, level: {armor['level']}, melee defense: {armor['melee_defense']}, range defense: {armor['range_defense']}, mage defense: {armor['mage_defense']}. \n"
-        else:
-            description += "My Bottom slot is empty. \n"
-
-        if equipped_weapon or equipped_tool:
-            if equipped_weapon:
-                weapon = equipped_weapon[0]
-                description += f"My Weapon/Tool slot is equipped with: \nitem id: {weapon['id']}, name: {weapon['name']}, level: {weapon['level']}, melee attack: {weapon['melee_attack']}, range attack: {weapon['range_attack']}, mage attack: {weapon['mage_attack']}. \n"
-
-            if equipped_tool:
-                tool = equipped_tool[0]
-                description += f"My Weapon/Tool slot is equipped with: \nitem id: {tool['id']}, name: {tool['name']}, level: {tool['level']}, melee defense: {tool['melee_defense']}, range defense: {tool['range_defense']}, mage defense: {tool['mage_defense']}. \n"
-        else:
-            description += "My Weapon/Tool slot is empty. \n"
-
-        if equipped_ammunition:
-            ammunition = equipped_ammunition[0]
-            description += f"My Ammunition slot is equipped with: \nitem id: {ammunition['id']}, name: {ammunition['name']}, level: {ammunition['level']}, quantity: {ammunition['quantity']}, range attack: {ammunition['range_attack']}, melee attack: {ammunition['melee_attack']}, mage attack: {ammunition['mage_attack']}. \n"
-        else:
-            description += "My Ammunition slot is empty. \n"
-        return description
-
-    def generate_inventory_description(
+    def generate_item_description(
         self,
         capacity,
-        ego_agent_info,
         armor_info,
         weapon_info,
         tool_info,
         ammunition_info,
         consumable_info,
     ):
-        if capacity > 0:
-            description = f"My inventory capacity is {capacity}/12 and contains the following items: \n"
-        else:
-            description = f"My inventory is empty. \n"
+        description = {}
+        description["item_number"] = capacity
+        description["capacity"] = 12
+        description["items"] = []
         if armor_info:
             for armor in armor_info:
-                description += f"item id: {armor['id']}, name: {armor['name']}, level: {armor['level']}, melee defense: {armor['melee_defense']}, range defense: {armor['range_defense']}, mage defense: {armor['mage_defense']}. "
-                if not self.check_level(ego_agent_info, armor):
-                    description += "I cannot currently equip this armor due to level restriction. "
-                description += "\n"
+                single_item_info = {
+                    "id": armor["id"],
+                    "name": armor["name"],
+                    "type": armor["type"],
+                    "level": armor["level"],
+                    "defense": armor["melee_defense"],
+                    "is_equipped": armor["is_equipped"],
+                }
+                description["items"].append(single_item_info)
         if weapon_info:
             for weapon in weapon_info:
-                description += f"item id: {weapon['id']}, name: {weapon['name']}, level: {weapon['level']}, melee attack: {weapon['melee_attack']}, range attack: {weapon['range_attack']}, mage attack: {weapon['mage_attack']}. "
-                if not self.check_level(ego_agent_info, weapon):
-                    description += "I cannot currently equip this weapon due to level restriction. "
-                description += "\n"
+                single_item_info = {
+                    "id": weapon["id"],
+                    "name": weapon["name"],
+                    "type": weapon["type"],
+                    "level": weapon["level"],
+                    "melee_attack": weapon["melee_attack"],
+                    "range_attack": weapon["range_attack"],
+                    "mage_attack": weapon["mage_attack"],
+                    "is_equipped": weapon["is_equipped"],
+                }
+                description["items"].append(single_item_info)
         if tool_info:
             for tool in tool_info:
-                description += f"item id: {tool['id']}, name: {tool['name']}, level: {tool['level']}, melee defense: {tool['melee_defense']}, range defense: {tool['range_defense']}, mage defense: {tool['mage_defense']}. "
-                if not self.check_level(ego_agent_info, tool):
-                    description += "I cannot currently equip this tool due to level restriction. "
-                description += "\n"
+                single_item_info = {
+                    "id": tool["id"],
+                    "name": tool["name"],
+                    "type": tool["type"],
+                    "level": tool["level"],
+                    "defense": tool["melee_defense"],
+                    "is_equipped": tool["is_equipped"],
+                }
+                description["items"].append(single_item_info)
         if ammunition_info:
             for ammunition in ammunition_info:
-                description += f"item id: {ammunition['id']}, name: {ammunition['name']}, level: {ammunition['level']}, quantity: {ammunition['quantity']}, range attack: {ammunition['range_attack']}, melee attack: {ammunition['melee_attack']}, mage attack: {ammunition['mage_attack']}. "
-                if not self.check_level(ego_agent_info, ammunition):
-                    description += "I cannot currently equip this ammunition due to level restriction. "
-                description += "\n"
+                single_item_info = {
+                    "id": ammunition["id"],
+                    "name": ammunition["name"],
+                    "type": ammunition["type"],
+                    "level": ammunition["level"],
+                    "quantity": ammunition["quantity"],
+                    "melee_attack": ammunition["melee_attack"],
+                    "range_attack": ammunition["range_attack"],
+                    "mage_attack": ammunition["mage_attack"],
+                    "is_equipped": ammunition["is_equipped"],
+                }
+                description["items"].append(single_item_info)
         if consumable_info:
             for consumable in consumable_info:
+                single_item_info = {
+                    "id": consumable["id"],
+                    "name": consumable["name"],
+                    "type": consumable["type"],
+                    "level": consumable["level"],
+                }
                 if consumable["name"] == "Ration":
-                    description += f"item id: {consumable['id']}, name: {consumable['name']}, level: {consumable['level']}, resource restore: {consumable['resource_restore']}. "
+                    single_item_info["resource_restore"] = consumable["resource_restore"]
                 elif consumable["name"] == "Potion":
-                    description += f"item id: {consumable['id']}, name: {consumable['name']}, level: {consumable['level']}, health restore: {consumable['health_restore']}. "
-                if not self.check_level(ego_agent_info, consumable):
-                    description += "I cannot currently use this consumable due to level restriction. "
-                description += "\n"
-        return description
+                    single_item_info["health_restore"] = consumable["health_restore"]
+                description["items"].append(single_item_info)
 
-    def get_attackable_entity(self, ego_agent_info, entity_info, attack_range):
-        # 视野与攻击的范围不同
-        attackable_entity = []
-        agent_pos = (ego_agent_info["row"], ego_agent_info["col"])
+        return json.dumps(description, indent=4)
 
-        for entity in entity_info:
-            if entity["id"] == ego_agent_info["id"]:  # 跳过自己
-                continue
-
-            entity_pos = entity["position"]  # 实体的位置
-            distance = utils.linf_single(agent_pos, entity_pos)
-            if distance <= attack_range:
-                attackable_entity.append(
-                    {
-                        "id": entity["id"],
-                        "distance": distance,
-                    }
-                )
-
-        return attackable_entity
-
-    def generate_available_attack(self, ego_agent_info, entity_info):
-        available_attack = []
-
-        for style, attack_range in self.attack_range.items():
-            attackable_entity = self.get_attackable_entity(ego_agent_info, entity_info, attack_range)
-            for entity in attackable_entity:
-                if entity["id"] < 0 and self.config.NPC_SYSTEM_ENABLED:
-                    available_attack.append(f"Attack NPC {entity['id']} with {style}.")
-                else:
-                    available_attack.append(f"Attack Player {entity['id']} with {style}.")
-        available_attack.append("Attack nothing.")
-        return available_attack
-
-    def generate_available_item_use(self, ego_agent_info, item_info):
-        if not item_info or ego_agent_info["agent_in_combat"]:
-            return ""
-
-        available_item_use = []
-        for item in item_info:
-            if item["type"] in ["Armor", "Weapon", "Tool", "Ammunition"]:
-                if not item["is_equipped"]:
-                    if self.check_level(ego_agent_info, item):
-                        available_item_use.append(f"Equip level {item['level']} {item['name']} with id {item['id']}.")
-                elif item["is_equipped"]:
-                    available_item_use.append(f"Unequip level {item['level']} {item['name']} with id {item['id']}.")
-            elif item["type"] == "Consumable":
-                if self.check_level(ego_agent_info, item):
-                    available_item_use.append(f"Use level {item['level']} {item['name']} with id {item['id']}.")
-            else:
-                raise ValueError(f"Unknown item type: {item['type']}")
-        return available_item_use
-
-    def generate_available_destroy(self, ego_agent_info, item_info):
-        if not item_info or ego_agent_info["agent_in_combat"]:
-            return ""
-
-        available_item_destroy = []
-        for item in item_info:
-            if item["type"] in ["Armor", "Weapon", "Tool", "Ammunition"]:
-                if not item["is_equipped"]:
-                    available_item_destroy.append(f"Destroy level {item['level']} {item['name']} with id {item['id']}.")
-            elif item["type"] == "Consumable":
-                available_item_destroy.append(f"Destroy level {item['level']} {item['name']} with id {item['id']}.")
-            else:
-                raise ValueError(f"Unknown item type: {item['type']}")
-        return available_item_destroy
-
-    def generate_available_give(self, ego_agent_info, entity_info, item_info):
-        if not item_info or ego_agent_info["agent_in_combat"]:
-            return ""
-
-        available_item_give = []
-        for item in item_info:
-            if item["type"] in ["Armor", "Weapon", "Tool", "Ammunition"] and item["is_equipped"]:
-                continue
-            for entity in entity_info:
-                if entity["id"] != ego_agent_info["id"] and entity["id"] > 0:
-                    available_item_give.append(
-                        f"Give level {item['level']} {item['name']} with id {item['id']} to Player {entity['id']}."
-                    )
-        return available_item_give
-
-    def check_level(self, agent_info, item):
-        melee_level = agent_info["melee_level"]
-        range_level = agent_info["range_level"]
-        mage_level = agent_info["mage_level"]
-        fishing_level = agent_info["fishing_level"]
-        herbalism_level = agent_info["herbalism_level"]
-        prospecting_level = agent_info["prospecting_level"]
-        carving_level = agent_info["carving_level"]
-        alchemy_level = agent_info["alchemy_level"]
-        agent_highest_level = max(
-            melee_level,
-            range_level,
-            mage_level,
-            fishing_level,
-            herbalism_level,
-            prospecting_level,
-            carving_level,
-            alchemy_level,
-        )
-
-        # 检查防具等级
-        if item["type"] == "Armor":
-            return agent_highest_level >= item["level"]
-        # 检查武器和弹药等级
-        elif item["type"] == "Weapon" or item["type"] == "Ammunition":
-            if item["name"] == "Spear" or item["name"] == "Whetstone":
-                return melee_level >= item["level"]
-            elif item["name"] == "Bow" or item["name"] == "Arrow":
-                return range_level >= item["level"]
-            elif item["name"] == "Wand" or item["name"] == "Runes":
-                return mage_level >= item["level"]
-            else:
-                raise ValueError(f"Unknown Weapon or Ammunition: {item['name']}")
-        # 检查工具等级
-        elif item["type"] == "Tool":
-            if item["name"] == "Rod":
-                return fishing_level >= item["level"]
-            elif item["name"] == "Gloves":
-                return herbalism_level >= item["level"]
-            elif item["name"] == "Axe":
-                return carving_level >= item["level"]
-            elif item["name"] == "Chisel":
-                return alchemy_level >= item["level"]
-            elif item["name"] == "Pickaxe":
-                return prospecting_level >= item["level"]
-            else:
-                raise ValueError(f"Unknown tool: {item['name']}")
-        # 检查消耗品等级
-        elif item["type"] == "Consumable":
-            return agent_highest_level >= item["level"]
-
-        else:
-            return False
+    def generate_skill_description(self, ego_agent_info):
+        description = {}
+        for k, v in ego_agent_info.items():
+            if "level" in k and k != "item_level":
+                skill_name = k.split("_level")[0].capitalize()
+                description[skill_name] = v
+        return json.dumps(description, indent=4)
