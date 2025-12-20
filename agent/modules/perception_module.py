@@ -41,7 +41,7 @@ class PerceptionModule:
         }
 
     def perceive(self, state_info, tick, horizon):
-        description = "## Basic Information\n"
+        description = ""
         state_description = {}
 
         if self.add_tick_info:
@@ -49,7 +49,7 @@ class PerceptionModule:
         description += json.dumps(state_description) + "\n"
         # 添加健康信息
         meta_description = (
-            "Player has Health, Food, and Water, each with a maximum value of 100. Food/Water drop 10 each tick. If Water or Food is 0, the player loses 10 Health per tick; if both are 0, Health loses 20 per tick. Health regenerates 10 per tick if food and water are above 50. \n Here is my current health status:\n"
+            "Player has Health, Food, and Water, each with a maximum value of 100. Food/Water drop 10 each tick. If Water or Food is 0, the player loses 10 Health per tick; if both are 0, Health loses 20 per tick. Health regenerates 10 per tick if food and water are above 50. Here is my current health status:\n"
             + self.generate_health_description(state_info["agent"])
         )
         description += meta_description + "\n"
@@ -71,7 +71,7 @@ class PerceptionModule:
         if self.config.NPC_SYSTEM_ENABLED:
             entity_description = "Entities on the map include NPCs and other players. NPCs are divided into passive, neutral, and aggressive types. Here is the information about different NPC types:\n"
             entity_description += json.dumps(NPC_TABLE, indent=4)
-            description += json.dumps(entity_description) + "\n"
+            description += entity_description + "\n"
 
         if self.config.COMBAT_SYSTEM_ENABLED:
             commbat_description = "Combat may occur between entities. The outcome of combat depends on the entities' attack and defense values. The game has three combat styles: Melee, Range, and Mage. Players can use any combat style, while NPCs can only use one combat style. Equipping specific weapons and ammunition, improving combat skills, and using a combat style that counters the enemy will all increase the attack value of the corresponding style. The weapons, ammunition, skills, and countered combat styles for each combat style are as follows:\n"
@@ -79,8 +79,8 @@ class PerceptionModule:
             commbat_description += json.dumps(COMBAT_TABLE, indent=4)
 
             description += commbat_description + "\n"
-
-        description += "In this game, players can only view an area of {view_size} × {view_size} tiles centered on themselves, which is also divided into nine areas: center, eastern, western, northern, southern, northeastern, southeastern, northwestern, and the southwestern area. Players can only directly harvest resources or attack other entities in the center area. Moving to another area makes that area the new center area. Some areas are difficult to traverse. This may be because they contain many impassable tiles (such as rock tiles), or because many tiles are unreachable from the character's current position (for example, blocked by water or stone tiles). Here is information about the resources, entities, fog, and passability of the nine areas in the observation space: \n"
+        view_size = 15
+        description += f"In this game, players can only view an area of {view_size} × {view_size} tiles centered on themselves, which is also divided into nine areas: center, eastern, western, northern, southern, northeastern, southeastern, northwestern, and the southwestern area. Players can only directly harvest resources or attack other entities in the center area. Moving to another area makes that area the new center area. Some areas are difficult to traverse. This may be because they contain many impassable tiles (such as rock tiles), or because many tiles are unreachable from the character's current position (for example, blocked by water or stone tiles). Here is information about the resources, entities, fog, and passability of the nine areas in the observation space: \n"
 
         description += (
             self.generate_observation_description(
@@ -115,7 +115,7 @@ class PerceptionModule:
             description += skill_description + "\nHere is my current skill levels:\n"
             description += self.generate_skill_description(state_info["agent"]) + "\n"
 
-        print(description)
+        # print(description)
         return description
 
     def generate_health_description(self, ego_agent_info):
@@ -147,9 +147,9 @@ class PerceptionModule:
                         continue
                     single_resource_info = {
                         "name": resource_name,
-                        "count": this_resource_info["count"],
-                        "is_resource": this_resource_info["is_resource"],
-                        "passible": this_resource_info["passible"],
+                        "count": int(this_resource_info["count"]),
+                        "is_resource": bool(this_resource_info["is_resource"]),
+                        "passible": bool(this_resource_info["passible"]),
                     }
                     if "original_resource" in this_resource_info:
                         single_resource_info["original_resource"] = this_resource_info["original_resource"]
@@ -164,9 +164,9 @@ class PerceptionModule:
                         "name": entity["name"],
                         "type": entity["type"],
                         "combat_style": entity["style"],
-                        "health": entity["health"],
-                        "level": entity["level"],
-                        "in_combat": entity["in_combat"],
+                        "health": int(entity["health"]),
+                        "level": int(entity["level"]),
+                        "in_combat": bool(entity["in_combat"]),
                     }
                     if entity["in_combat"]:
                         single_entity_info["attacked_by"] = entity["attacker"]
@@ -176,9 +176,9 @@ class PerceptionModule:
             # 补充迷雾信息
             if self.config.DEATH_FOG_ONSET and fog_info[area]:
                 description[area]["fog"] = {
-                    "out_of_fog_tile_count": fog_info[area]["out_of_fog_count"],
-                    "in_fog_tile_count": fog_info[area]["in_fog_count"],
-                    "on_edge_tile_count": fog_info[area]["on_edge_count"],
+                    "out_of_fog_tile_count": int(fog_info[area]["out_of_fog_count"]),
+                    "in_fog_tile_count": int(fog_info[area]["in_fog_count"]),
+                    "on_edge_tile_count": int(fog_info[area]["on_edge_count"]),
                 }
             # 补充可通行性信息
             description[area]["visited_tile_count"] = passible_info[area]["visited_tile_count"]
@@ -202,64 +202,64 @@ class PerceptionModule:
         if armor_info:
             for armor in armor_info:
                 single_item_info = {
-                    "id": armor["id"],
+                    "id": int(armor["id"]),
                     "name": armor["name"],
                     "type": armor["type"],
-                    "level": armor["level"],
-                    "defense": armor["melee_defense"],
-                    "is_equipped": armor["is_equipped"],
+                    "level": int(armor["level"]),
+                    "defense": int(armor["melee_defense"]),
+                    "is_equipped": bool(armor["is_equipped"]),
                 }
                 description["items"].append(single_item_info)
         if weapon_info:
             for weapon in weapon_info:
                 single_item_info = {
-                    "id": weapon["id"],
+                    "id": int(weapon["id"]),
                     "name": weapon["name"],
                     "type": weapon["type"],
-                    "level": weapon["level"],
-                    "melee_attack": weapon["melee_attack"],
-                    "range_attack": weapon["range_attack"],
-                    "mage_attack": weapon["mage_attack"],
-                    "is_equipped": weapon["is_equipped"],
+                    "level": int(weapon["level"]),
+                    "melee_attack": int(weapon["melee_attack"]),
+                    "range_attack": int(weapon["range_attack"]),
+                    "mage_attack": int(weapon["mage_attack"]),
+                    "is_equipped": bool(weapon["is_equipped"]),
                 }
                 description["items"].append(single_item_info)
         if tool_info:
             for tool in tool_info:
                 single_item_info = {
-                    "id": tool["id"],
+                    "id": int(tool["id"]),
                     "name": tool["name"],
                     "type": tool["type"],
-                    "level": tool["level"],
-                    "defense": tool["melee_defense"],
-                    "is_equipped": tool["is_equipped"],
+                    "level": int(tool["level"]),
+                    "defense": int(tool["melee_defense"]),
+                    "is_equipped": bool(tool["is_equipped"]),
                 }
                 description["items"].append(single_item_info)
         if ammunition_info:
             for ammunition in ammunition_info:
                 single_item_info = {
-                    "id": ammunition["id"],
+                    "id": int(ammunition["id"]),
                     "name": ammunition["name"],
                     "type": ammunition["type"],
-                    "level": ammunition["level"],
-                    "quantity": ammunition["quantity"],
-                    "melee_attack": ammunition["melee_attack"],
-                    "range_attack": ammunition["range_attack"],
-                    "mage_attack": ammunition["mage_attack"],
-                    "is_equipped": ammunition["is_equipped"],
+                    "level": int(ammunition["level"]),
+                    "quantity": int(ammunition["quantity"]),
+                    "melee_attack": int(ammunition["melee_attack"]),
+                    "range_attack": int(ammunition["range_attack"]),
+                    "mage_attack": int(ammunition["mage_attack"]),
+                    "is_equipped": bool(ammunition["is_equipped"]),
                 }
                 description["items"].append(single_item_info)
         if consumable_info:
             for consumable in consumable_info:
                 single_item_info = {
-                    "id": consumable["id"],
+                    "id": int(consumable["id"]),
                     "name": consumable["name"],
                     "type": consumable["type"],
-                    "level": consumable["level"],
+                    "level": int(consumable["level"]),
                 }
                 if consumable["name"] == "Ration":
-                    single_item_info["resource_restore"] = consumable["resource_restore"]
+                    single_item_info["resource_restore"] = int(consumable["resource_restore"])
                 elif consumable["name"] == "Potion":
-                    single_item_info["health_restore"] = consumable["health_restore"]
+                    single_item_info["health_restore"] = int(consumable["health_restore"])
                 description["items"].append(single_item_info)
 
         return json.dumps(description, indent=4)
@@ -269,5 +269,5 @@ class PerceptionModule:
         for k, v in ego_agent_info.items():
             if "level" in k and k != "item_level":
                 skill_name = k.split("_level")[0].capitalize()
-                description[skill_name] = v
+                description[skill_name] = int(v)
         return json.dumps(description, indent=4)

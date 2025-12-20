@@ -169,14 +169,12 @@ class LLMPlayer:
         # )
 
     def act(self, obs, tick):
-        # if self.use_strategy:
-        #     self.strategies = self.strategy_manager.get_strategy_str()
 
-        # print(obs, tick)1
-        if self.use_information_reduction:
-            game_mechanics = self.game_rule_module.get_detail_game_rule(task=self.goal)
-        else:
-            game_mechanics = self.game_rule_module.get_detail_game_rule() 
+        game_mechanics = self.game_rule_module.get_game_rule_overview() 
+        # if self.use_information_reduction:
+        #     game_mechanics = self.game_rule_module.get_detail_game_rule(task=self.goal)
+        # else:
+        #     game_mechanics = self.game_rule_module.get_detail_game_rule() 
         state_info = self.state_manager.get_state_info(obs)
         state_description = self.perceive_module.perceive(state_info, tick, self.horizon)
 

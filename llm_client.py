@@ -67,7 +67,7 @@ class OpenAIClient:
                 response = json.loads(json_str)
                 assert compare_dict_keys(response, decision_space)
             except Exception:
-                print(response)
+                # print(response)
                 try_time += 1
             else:
                 return response

@@ -12,6 +12,7 @@ from constant import (
     DIRECTION_TO_INDEX,
     ATTACK_STYLE_TO_INDEX,
     RESOURCE_TILE,
+    IMPASSIBLE_TILE,
 )
 
 from utils.path_utils import a_star_bounded as aStar
@@ -65,7 +66,7 @@ class ActionManager:
         self.area_space = AREA_SPACE
         self.npc_type_id_to_name = NPC_TYPE_ID_TO_NAME
         self.attack_style_to_index = ATTACK_STYLE_TO_INDEX
-        # self.passable_tile = PASSABLE_TILE
+        self.impassible_tile = IMPASSIBLE_TILE
         self.resource_tile = RESOURCE_TILE
 
         self.path_find_depth = path_find_depth
@@ -146,7 +147,7 @@ class ActionManager:
         start_pos = (obs.agent.row, obs.agent.col)
         for tile in obs.tiles:
             if self.material_id_to_name[tile[2]] == resource_name:
-                if resource_name in self.passable_tile:
+                if resource_name not in self.impassible_tile:
                     target_pos_list = [(tile[0], tile[1])]
                 else:
                     # 处理水和鱼等不可接近的资源
@@ -320,9 +321,6 @@ class ActionManager:
 
     def _get_use_item_id_from_response(self, ml_action, obs):
         item_id_to_index = {item[0]: i for i, item in enumerate(obs.inventory.values)}
-        # print(ml_action)
-        # print(item_id_to_index)
-        # print(vars(obs.agent)["id"])
         use_pattern = r"(?:Equip|Unequip|Use) level \d+ \w+ with id (\d+)"
         match = re.search(use_pattern, ml_action)
         if match:
@@ -333,9 +331,6 @@ class ActionManager:
     def _get_destroy_item_id_from_response(self, ml_action, obs):
         item_id_to_index = {item[0]: i for i, item in enumerate(obs.inventory.values)}
         destroy_pattern = r"Destroy level \d+ \w+ with id (\d+)"
-        # print(ml_action)
-        # print(item_id_to_index)
-        # print(vars(obs.agent)["id"])
 
         match = re.search(destroy_pattern, ml_action)
         if match:
@@ -346,9 +341,6 @@ class ActionManager:
     def _get_give_item_id_from_response(self, ml_action, obs):
         item_id_to_index = {item[0]: i for i, item in enumerate(obs.inventory.values)}
         entity_id_to_index = {entity[0]: i for i, entity in enumerate(obs.entities.values)}
-        # print(item_id_to_index)
-        # print(entity_id_to_index)
-        # print(ml_action)
         print(vars(obs.agent)["id"])
         give_pattern = r"Give level \d+ \w+ with id (\d+) to Player (\d+)"
         match = re.search(give_pattern, ml_action)

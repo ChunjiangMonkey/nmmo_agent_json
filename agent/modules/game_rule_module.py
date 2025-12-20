@@ -87,9 +87,11 @@ class GameRuleModule:
         self.config = config
         self.element = elements
         self.element_sentences = self._identify_elements(elements, self._bearkdown_game_rules())
-        self.game_rule_overview = self._generate_game_rule(add_detail_game_rule=False) 
+        self.game_rule_overview = self._generate_game_rule(add_detail_game_rule=False)
         self.complete_game_rule = self._generate_game_rule(add_detail_game_rule=True)
 
+    def get_game_rule_overview(self):
+        return GAME_OVERVIEW
 
     def get_detail_game_rule(self, task=None):
         """
@@ -132,9 +134,7 @@ class GameRuleModule:
         if add_detail_game_rule:
             game_rule += format_string(RESOURCE_DETAIL)
         if self.config.DEATH_FOG_ONSET:
-            game_rule += "\n" + format_string(
-                FOG_OVERVIEW.format(fog_begin_time=self.config.DEATH_FOG_ONSET)
-            )
+            game_rule += "\n" + format_string(FOG_OVERVIEW.format(fog_begin_time=self.config.DEATH_FOG_ONSET))
 
         if self.config.COMBAT_SYSTEM_ENABLED:
             game_rule += "\n" + format_string(COMBAT_OVERVIEW.format(view_size=view_size))

@@ -422,8 +422,7 @@ class ActionModule:
     def generate_available_ml_action(self, state_info):
         resource_info = state_info["resource"]
         entity_info = state_info["entity"]
-        reachable_area_info = state_info["reachable_area"]
-        available_move = self.generate_available_move(reachable_area_info)
+        available_move = self.generate_available_move()
         available_harvest = self.generate_available_harvest(resource_info)
         available_safe_attack = self.generate_available_passive_NPC_attack(entity_info)
         available_dangerous_attack = self.generate_available_dangerous_entity_attack(entity_info)
@@ -436,10 +435,10 @@ class ActionModule:
         }
         return list(self.available_ml_action_dict.keys())
 
-    def generate_available_move(self, reachable_area_info):
+    def generate_available_move(self):
         available_move = {}
         for area in self.areas:
-            if area != "center" and reachable_area_info[area]:
+            if area != "center":
                 action_dict = {}
                 action_dict["Move"] = f"Move to the {area} area"
                 action_dict["Attack"] = self.default_action["Attack"]
@@ -451,14 +450,15 @@ class ActionModule:
         return available_move
 
     def generate_available_harvest(self, resource_info):
+        # print("resource_info in generate_available_harvest:", resource_info)
         available_harvest = {}
-        for resource in resource_info["center"]:
-            if resource["name"] == "Void":
+        for resource_name, resource_info in resource_info["center"].items():
+            if not resource_info["is_resource"]:
                 continue
             action_dict = {}
-            action_dict["Move"] = f"Move to the nearest {resource['name']} tile"
+            action_dict["Move"] = f"Move to the nearest {resource_name} tile"
             action_dict["Attack"] = self.default_action["Attack"]
-            available_harvest[f"Harvest {resource['name']} in the center area"] = action_dict
+            available_harvest[f"Harvest {resource_name} in the center area"] = action_dict
         return available_harvest
 
     def generate_available_passive_NPC_attack(self, entity_info):
