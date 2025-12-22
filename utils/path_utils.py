@@ -25,6 +25,33 @@ def get_bounds(tiles):
     return (min_r, max_r, min_c, max_c)
 
 
+def which_part(start, end, x):
+    if not (start <= x <= end):
+        raise ValueError(f"x is not in the range [{start}, {end}]")
+
+    n = end - start + 1
+    base = n // 3
+    remainder = n % 3
+
+    if remainder == 0:
+        L1 = L2 = base
+    elif remainder == 1:
+        L1 = base
+        L2 = base + 1
+    else:  # remainder == 2
+        L1 = base + 1
+        L2 = base
+
+    b1_end = start + L1 - 1
+    b2_end = b1_end + L2
+
+    if x <= b1_end:
+        return 0
+    elif x <= b2_end:
+        return 1
+    else:
+        return 2
+    
 def a_star(realm_map, start, goal, cutoff=CUTOFF):
     if start == goal:
         return (0, 0), 0
@@ -88,9 +115,9 @@ def a_star_bounded(realm_map, start, goal, bounds=None):
     habitable = realm_map.habitable_tiles
     bounds_key = tuple(bounds) if bounds is not None else None
 
-    cache_key = ("bounded", start, goal, bounds_key)
-    if cache_key in realm_map.pathfinding_cache:
-        return realm_map.pathfinding_cache[cache_key]
+    # cache_key = ("bounded", start, goal, bounds_key)
+    # if cache_key in realm_map.pathfinding_cache:
+    #     return realm_map.pathfinding_cache[cache_key]
 
     def in_search_area(pos):
         r, c = pos
@@ -101,10 +128,10 @@ def a_star_bounded(realm_map, start, goal, bounds=None):
         return in_bounds(r, c, tiles.shape) and habitable[r, c] != 0
 
     if start == goal and in_search_area(start):
-        realm_map.pathfinding_cache[cache_key] = ((0, 0), 0)
+        # realm_map.pathfinding_cache[cache_key] = ((0, 0), 0)
         return ((0, 0), 0)
     if not in_search_area(start) or not in_search_area(goal):
-        realm_map.pathfinding_cache[cache_key] = ((0, 0), float("inf"))
+        # realm_map.pathfinding_cache[cache_key] = ((0, 0), float("inf"))
         return ((0, 0), float("inf"))
 
     pq = [(l1(start, goal), 0, start)]  # (priority, cost_so_far, position)
@@ -130,7 +157,7 @@ def a_star_bounded(realm_map, start, goal, bounds=None):
                 backtrace[nxt] = cur
 
     if not found:
-        realm_map.pathfinding_cache[cache_key] = ((0, 0), float("inf"))
+        # realm_map.pathfinding_cache[cache_key] = ((0, 0), float("inf"))
         return ((0, 0), float("inf"))
 
     cur = goal
@@ -141,5 +168,5 @@ def a_star_bounded(realm_map, start, goal, bounds=None):
     gr, gc = cur
     direction = (gr - sr, gc - sc)
     path_length = cost[goal]
-    realm_map.pathfinding_cache[cache_key] = (direction, path_length)
+    # realm_map.pathfinding_cache[cache_key] = (direction, path_length)
     return (direction, path_length)

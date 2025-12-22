@@ -188,7 +188,8 @@ class ActionModule:
         # self.pos_last_step = pos
         if state_info["agent"]["agent_in_combat"]:
             for entity in state_info["entity"]["center"]:
-                if entity["in_combat"] and entity["type"] != "passive":
+                if entity["in_combat"]:
+                # if entity["in_combat"] and entity["type"] != "passive":
                     if state_info["agent"]["name"] == entity["attacker"]:
                         return True
                     if state_info["agent"]["name"] == entity["target_of_attack"]:
@@ -199,44 +200,49 @@ class ActionModule:
             return True
 
         # 智能体生命垂危
-        if state_info["agent"]["food"] < 30:
-            return True
-        if state_info["agent"]["water"] < 30:
-            return True
-        if state_info["agent"]["health"] < 30:
+        # if state_info["agent"]["food"] < 30:
+        #     return True
+        # if state_info["agent"]["water"] < 30:
+        #     return True
+        if state_info["agent"]["health"] < 60:
             return True
 
         # 出现了新的NPC
-        old_state_entity_id = [entity["id"] for entity in old_state_info["entity"]["center"]]
-        new_state_entity_id = [entity["id"] for entity in state_info["entity"]["center"]]
-        if set(new_state_entity_id) != set(old_state_entity_id):
-            return True
+        # old_state_entity_id = [entity["id"] for entity in old_state_info["entity"]["center"]]
+        # new_state_entity_id = [entity["id"] for entity in state_info["entity"]["center"]]
+        # if set(new_state_entity_id) != set(old_state_entity_id):
+        #     return True
 
         # 过去的动作已经完成
         # if not last_record:
         #     return False
         if ml_action["Move"] == "Stay":
             return True
-        tile_resource = state_info["agent"]["title_type"]
+        tile_resource = state_info["agent"]["occupied_resource"]
 
         move_action = ml_action["Move"]
-        if move_action == "Move to the nearest Foliage tile":
-            if tile_resource == "Foliage":
-                return True
-        if move_action == "Move to the nearest Water tile":
-            if state_info["agent"]["water_around"]:
-                return True
+        # if move_action == "Move to the nearest Foliage tile":
+        #     if tile_resource == "Foliage":
+        #         return True
+        # if move_action == "Move to the nearest Water tile":
+        #     if state_info["agent"]["water_around"]:
+        #         return True
 
         # if not last_record["harvest"]:
         #     return False
         if "Move to the nearest" in move_action:
             res_name = move_action.split("Move to the nearest ")[1].split(" tile")[0]
-            if res_name != "Foliage" and res_name != "Water" and res_name != "Fish":
+            if  res_name != "Water" and res_name != "Fish":
                 if tile_resource == res_name:
                     return True
             elif res_name == "Fish":
                 if state_info["agent"]["fish_around"]:
                     return True
+            elif res_name == "Water":
+                if state_info["agent"]["water_around"]:
+                    return True
+            
+            
                 # for harvest_item in last_record["harvest"]:
                 #     if harvest_item["item_res"] == res_name:
                 #         print(f"上一次动作完成，采集了{res_name}")
@@ -247,9 +253,9 @@ class ActionModule:
                 if last_record["kill"]:
                     kill_target = last_record["kill"]["target"]
                     attack_target = ml_action["Attack"].split(" with ")[0].split("Attack ")[1]
-                    print(f"动作是攻击{attack_target}")
+                    # print(f"动作是攻击{attack_target}")
                     if kill_target == attack_target:
-                        print(f"上一次动作完成，击杀了{attack_target}")
+                        # print(f"上一次动作完成，击杀了{attack_target}")
                         return True
 
         #  到达了新area

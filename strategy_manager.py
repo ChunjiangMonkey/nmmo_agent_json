@@ -1,5 +1,5 @@
 import re
-from llm_client import LlamaClient, OpenAIClient
+from llm_client import LLMClient
 
 from utils.io_utils import write_to_file
 
@@ -26,10 +26,7 @@ class StrategyManager:
     def __init__(self, model_name, debug=False):
         self.strategy_pool = set(INIT_STRATEGY)
         self.model_name = model_name
-        if "llama" in model_name.lower():
-            self.llm_client = LlamaClient(model=model_name)
-        else:
-            self.llm_client = OpenAIClient(model=model_name)
+        self.llm_client = LLMClient(model=model_name)
         self.save_path = None
         self.data_time = None
         self.new_adding_strategy_this_episode = 0

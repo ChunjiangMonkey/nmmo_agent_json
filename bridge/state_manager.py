@@ -12,35 +12,7 @@ from constant import (
     RESOURCE_TILE,
     IMPASSIBLE_TILE,
 )
-from utils.path_utils import a_star_bounded as aStar, l1, get_bounds
-
-
-def which_part(start, end, x):
-    if not (start <= x <= end):
-        raise ValueError(f"x is not in the range [{start}, {end}]")
-
-    n = end - start + 1
-    base = n // 3
-    remainder = n % 3
-
-    if remainder == 0:
-        L1 = L2 = base
-    elif remainder == 1:
-        L1 = base
-        L2 = base + 1
-    else:  # remainder == 2
-        L1 = base + 1
-        L2 = base
-
-    b1_end = start + L1 - 1
-    b2_end = b1_end + L2
-
-    if x <= b1_end:
-        return 0
-    elif x <= b2_end:
-        return 1
-    else:
-        return 2
+from utils.path_utils import a_star_bounded as aStar, l1, get_bounds, which_part
 
 
 class StateManager:
@@ -162,7 +134,9 @@ class StateManager:
             ego_agent_info[key] = value
         tile = self.env.realm.map.tiles[ego_agent_info["row"], ego_agent_info["col"]]
         tile_resource = self.material_id_to_name[tile.state.index]
-        ego_agent_info["title_type"] = tile_resource
+        if tile_resource not in self.resource_tile:
+            tile_resource = "None"
+        ego_agent_info["occupied_resource"] = tile_resource
         ego_agent_info["water_around"] = False
         ego_agent_info["fish_around"] = False
         self.visited_positions.add((ego_agent_info["row"], ego_agent_info["col"]))
@@ -234,7 +208,9 @@ class StateManager:
         bounds = get_bounds(obs.tiles)
         start_pos = (obs.agent.row, obs.agent.col)
 
-        for tile in obs.tiles:
+        for tile in obs.tiles: 
+            if (tile[0], tile[1]) == start_pos: # 自己位置的不统计
+                continue
             area = self.get_obs_area(obs, tile[0], tile[1])
             material_name = self.material_id_to_name[tile[2]]
 

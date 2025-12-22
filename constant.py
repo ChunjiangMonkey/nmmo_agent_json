@@ -89,7 +89,7 @@ ATTACK_STYLE_TO_INDEX = {
     "mage": 2,
 }
 
-REGION_SPACE = ["center", "north", "northeast", "east", "southeast", "south", "southwest", "west", "northwest"]
+REGION_SPACE = ["central", "northern", "northeastern", "eastern", "southeastern", "southern", "southwestern", "western", "northwestern"]
 AREA_SPACE = ["center", "north", "northeast", "east", "southeast", "south", "southwest", "west", "northwest"]
 
 DEFAULT_ACTION = {

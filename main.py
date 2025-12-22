@@ -150,7 +150,6 @@ def main(args):
         goals.append(goal_fun)
         for i in range(player_num):
             player_types.append("task")
-    print
     # for goal in goals:
     #     print(readable_task_name[goal.name])
 
@@ -365,6 +364,10 @@ def main(args):
                     else:
                         alive_players.append(agent_id)
                 game_status["alive_player_num"] = len(alive_players)
+
+                game_status["prompt_tokens"] = np.mean([player.token_usage["prompt_tokens"] for player in players])
+                game_status["completion_tokens"] = np.mean([player.token_usage["completion_tokens"] for player in players])
+                game_status["total_tokens"] = np.mean([player.token_usage["total_tokens"] for player in players])
 
                 if all_agent_dead or game_end or (run_task and all_task_completed):
                     if all_agent_dead:

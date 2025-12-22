@@ -49,8 +49,8 @@ class PerceptionModule:
         description += json.dumps(state_description) + "\n"
         # 添加健康信息
         meta_description = (
-            "Player has Health, Food, and Water, each with a maximum value of 100. Food/Water drop 10 each tick. If Water or Food is 0, the player loses 10 Health per tick; if both are 0, Health loses 20 per tick. Health regenerates 10 per tick if food and water are above 50. Here is my current health status:\n"
-            + self.generate_health_description(state_info["agent"])
+            "In this game, each player has Health, Food, and Water, each with a maximum value of 100. Food/Water drop 10 each tick. If Water or Food is 0, the player loses 10 Health per tick; if both are 0, Health loses 20 per tick. Health regenerates 10 per tick if food and water are above 50. Here is my character's current health status:\n"
+            + self.generate_survive_description(state_info["agent"])
         )
         description += meta_description + "\n"
 
@@ -58,7 +58,8 @@ class PerceptionModule:
         position_description = f"The tile is the basic unit that makes up the map. The game map has a total size of {self.config.MAP_CENTER} × {self.config.MAP_CENTER} tiles. Each tile corresponds to a coordinate. My character can move only one tile per tick. The entire game map is roughly divided into nine regions: the central region, eastern region, western region, northern region, southern region, northeastern region, southeastern region, northwestern region, and southwestern region. Players are informed of the coordinate and region they are in to clarify their macro-level position on the map. "
 
         if self.config.DEATH_FOG_ONSET:
-            position_description += f"Additionally, there is a death fog mechanism in the game. The fog area appears at time {self.config.DEATH_FOG_ONSET} and gradually expands from the edges of the map toward the center. The fog can damage player within it. A permanent safety area exists at the center of the map, which is never covered by the fog. The position information includes the distance to the safety zone. \n Here is my current position information:\n"
+            position_description += f"Additionally, there is a death fog mechanism in the game. The fog area appears at time {self.config.DEATH_FOG_ONSET} and gradually expands from the edges of the map toward the center. The fog can damage player within it. A permanent safety area exists at the center of the map, which is never covered by the fog. The position information includes the distance to the safety zone. "
+        position_description += "Here is my character's current position information:\n"
 
         position_description += self.generate_position_description(state_info["agent"])
         description += position_description + "\n"
@@ -80,10 +81,12 @@ class PerceptionModule:
 
             description += commbat_description + "\n"
         view_size = 15
-        description += f"In this game, players can only view an area of {view_size} × {view_size} tiles centered on themselves, which is also divided into nine areas: center, eastern, western, northern, southern, northeastern, southeastern, northwestern, and the southwestern area. Players can only directly harvest resources or attack other entities in the center area. Moving to another area makes that area the new center area. Some areas are difficult to traverse. This may be because they contain many impassable tiles (such as rock tiles), or because many tiles are unreachable from the character's current position (for example, blocked by water or stone tiles). Here is information about the resources, entities, fog, and passability of the nine areas in the observation space: \n"
+        description += f"In this game, each player can view {view_size} × {view_size} tiles centered on itself. They are divided into nine areas: center, east, west, north, south, northeast, southeast, northwest, and southwest. Each player automatically harvests the resources at their current location. Additionally, each player can directly move to harvest resources or attack other entities in the center area. Moving to another area makes that area the new center area. Some areas are difficult to traverse because they contain many impassable tiles (such as rock tiles), or their many contained tiles are unreachable from the character's current position (for example, blocked by water or stone tiles). The visited tile count refers to the number of tiles in this area that the player has visited. Here is information about the resources, entities, fog, and passability of the nine areas in my charater's observation: \n"
 
         description += (
             self.generate_observation_description(
+                tick,
+                state_info["agent"],
                 state_info["resource"],
                 state_info["entity"],
                 state_info["passible"],
@@ -96,7 +99,7 @@ class PerceptionModule:
             item_description = "Items are very helpful for player survival and combat. Based on their functions, acquisition methods, and skill requirements, items are divided into weapons, ammunition, armor, tools, and consumables. Armor and tools can only be obtained by killing other NPCs or players as drops. Weapons, ammunition, armor, and tools must be equipped to take effect. High-level items require the corresponding skills to reach the same level in order to be used. The names, functions, acquisition methods, and corresponding skill of all items are listed below:\n"
 
             item_description += json.dumps(ITEM_TABLE, indent=4)
-            description += item_description + "\n" + "Here is my current inventory information:\n"
+            description += item_description + "\n" + "Here is my character's current inventory information:\n"
             description += (
                 self.generate_item_description(
                     state_info["capacity"],
@@ -112,16 +115,25 @@ class PerceptionModule:
         if self.config.PROGRESSION_SYSTEM_ENABLED:
             skill_description = "Higher skill levels allow players to obtain better yields when harvesting resources, use higher-level equipment, and deal greater damage. The maximum level of items that a player can harvest or use is equal to the relevant skill level plus one. Below are the resources affected by each skill, the items they enable, and the ways in which the skills are leveled up:\n"
             skill_description += json.dumps(SKILL_TABLE, indent=4)
-            description += skill_description + "\nHere is my current skill levels:\n"
+            description += skill_description + "\nHere is my character's current skill levels:\n"
             description += self.generate_skill_description(state_info["agent"]) + "\n"
 
         # print(description)
         return description
 
-    def generate_health_description(self, ego_agent_info):
-        return json.dumps(
-            {"health": ego_agent_info["health"], "food": ego_agent_info["food"], "water": ego_agent_info["water"]}
-        )
+    def generate_survive_description(self, ego_agent_info):
+
+        description = {
+            "health": ego_agent_info["health"],
+            "food": ego_agent_info["food"],
+            "water": ego_agent_info["water"],
+            "in_combat": ego_agent_info["agent_in_combat"],
+        }
+
+        if ego_agent_info["agent_in_combat"]:
+            description["attacked_by"] = ego_agent_info["attacker"]
+            description["attack_target"] = ego_agent_info["target_of_attack"]
+        return json.dumps(description, indent=4)
 
     def generate_position_description(self, ego_agent_info):
         description = {}
@@ -135,9 +147,11 @@ class PerceptionModule:
                 description["dist_to_safety_zone"] = ego_agent_info["dist_to_safety_zone"]
         return json.dumps(description, indent=4)
 
-    def generate_observation_description(self, resource_info, entity_info, passible_info, fog_info):
+    def generate_observation_description(self, tick, ego_agent_info, resource_info, entity_info, passible_info, fog_info):
 
         description = {area: {} for area in self.areas}
+        description["resource_at_current_location"] = ego_agent_info["occupied_resource"]
+        ego_player_name = ego_agent_info["name"]
         for area in self.areas:
             # 补充资源信息
             if resource_info[area]:
@@ -169,17 +183,22 @@ class PerceptionModule:
                         "in_combat": bool(entity["in_combat"]),
                     }
                     if entity["in_combat"]:
-                        single_entity_info["attacked_by"] = entity["attacker"]
-                        single_entity_info["attack_target"] = entity["target_of_attack"]
+                        single_entity_info["attacked_by"] = (
+                            entity["attacker"] if entity["attacker"] != ego_player_name else "me"
+                        )
+                        single_entity_info["attack_target"] = (
+                            entity["target_of_attack"] if entity["target_of_attack"] != ego_player_name else "me"
+                        )
                     description[area]["entities"].append(single_entity_info)
 
             # 补充迷雾信息
-            if self.config.DEATH_FOG_ONSET and fog_info[area]:
-                description[area]["fog"] = {
-                    "out_of_fog_tile_count": int(fog_info[area]["out_of_fog_count"]),
-                    "in_fog_tile_count": int(fog_info[area]["in_fog_count"]),
-                    "on_edge_tile_count": int(fog_info[area]["on_edge_count"]),
-                }
+            if self.config.DEATH_FOG_ONSET:
+                if tick >= self.config.DEATH_FOG_ONSET and fog_info:
+                    description[area]["fog"] = {
+                        "out_of_fog_tile_count": int(fog_info[area]["out_of_fog_count"]),
+                        "in_fog_tile_count": int(fog_info[area]["in_fog_count"]),
+                        "on_the_edge_tile_count": int(fog_info[area]["on_the_edge_count"]),
+                    }
             # 补充可通行性信息
             description[area]["visited_tile_count"] = passible_info[area]["visited_tile_count"]
             description[area]["passible_tile_count"] = passible_info[area]["passible_tile_count"]

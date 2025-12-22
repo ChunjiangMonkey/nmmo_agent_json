@@ -17,7 +17,7 @@ import numpy as np
 import tqdm
 import tiktoken
 
-from llm_client import OpenAIClient, LlamaClient
+from llm_client import LLMClient
 import nmmo
 from nmmo.core.tile import TileState
 from nmmo.entity.entity import Entity
@@ -89,15 +89,14 @@ class LLMPlayer:
         self.model_name = model_name
         self.config = config
         if "gpt" in model_name.lower():
-            self.llm_client = OpenAIClient(
-                base_url=openai_base_url, api_key=openai_api_key, model=model_name, enable_thinking=enable_llm_thinking
-            )
+            base_url = openai_base_url
+            api_key = openai_api_key
         elif "llama" in model_name.lower():
-            self.llm_client = LlamaClient(
-                base_url=llama_base_url, api_key=llama_api_key, model=model_name, enable_thinking=enable_llm_thinking
-            )
+            base_url = llama_base_url
+            api_key = llama_api_key
         else:
             raise ValueError(f"Invalid model name: {model_name}")
+        self.llm_client = LLMClient(base_url=base_url, api_key=api_key, model=model_name, enable_thinking=enable_llm_thinking)
 
         self.file_save_path = file_save_path
         self.file_name_simple = f"{self.file_save_path}/state_prompt_{self.model_name}.txt"  # 简单提示文件保存路径
@@ -168,13 +167,17 @@ class LLMPlayer:
         #     debug=self.debug,
         # )
 
+    @property
+    def token_usage(self):
+        return self.llm_client.get_token_usage()
+
     def act(self, obs, tick):
 
-        game_mechanics = self.game_rule_module.get_game_rule_overview() 
+        game_mechanics = self.game_rule_module.get_game_rule_overview()
         # if self.use_information_reduction:
         #     game_mechanics = self.game_rule_module.get_detail_game_rule(task=self.goal)
         # else:
-        #     game_mechanics = self.game_rule_module.get_detail_game_rule() 
+        #     game_mechanics = self.game_rule_module.get_detail_game_rule()
         state_info = self.state_manager.get_state_info(obs)
         state_description = self.perceive_module.perceive(state_info, tick, self.horizon)
 

@@ -15,7 +15,7 @@ from constant import (
     IMPASSIBLE_TILE,
 )
 
-from utils.path_utils import a_star_bounded as aStar
+from utils.path_utils import a_star_bounded as aStar, get_bounds
 
 
 # pylint: disable=invalid-name
@@ -49,7 +49,7 @@ def range_midpoints(start, end):
 
 
 class ActionManager:
-    def __init__(self, env, path_find_depth=2):
+    def __init__(self, env):
         self.env = env
         self.config = env.config
         self.map_size = env.config.MAP_CENTER
@@ -69,8 +69,6 @@ class ActionManager:
         self.impassible_tile = IMPASSIBLE_TILE
         self.resource_tile = RESOURCE_TILE
 
-        self.path_find_depth = path_find_depth
-
         self.area_table = {
             (0, 0): "northwest",
             (0, 1): "north",
@@ -83,37 +81,6 @@ class ActionManager:
             (2, 2): "southeast",
         }
         self.area_index = {v: k for k, v in self.area_table.items()}
-
-    def move_to_area(self, obs, target_area):
-        tiles = obs.tiles
-        min_map_x = np.min(tiles[:, 0])
-        min_map_y = np.min(tiles[:, 1])
-        max_map_x = np.max(tiles[:, 0])
-        max_map_y = np.max(tiles[:, 1])
-        bounds = (min_map_x, max_map_x, min_map_y, max_map_y)
-
-        x_index = self.area_index[target_area][0]
-        y_index = self.area_index[target_area][1]
-        target_x = int(range_midpoints(min_map_x, max_map_x)[x_index])
-        target_y = int(range_midpoints(min_map_y, max_map_y)[y_index])
-
-        current_x = obs.agent.row
-        current_y = obs.agent.col
-        four_direction = [(0, 1), (0, -1), (1, 0), (-1, 0)]
-
-        target_pos_list = [(target_x, target_y)]
-        for eu_dis in range(1, self.path_find_depth + 1):
-            for one_direction in four_direction:
-                target_pos_list.append((target_x + eu_dis * one_direction[0], target_y + eu_dis * one_direction[1]))
-        for target_pos in target_pos_list:
-            if (
-                self.env.realm.map.is_valid_pos(target_pos[0], target_pos[1])
-                and not self.env.realm.map.tiles[target_pos[0], target_pos[1]].impassible
-            ):
-                direction, true_distance = aStar(self.env.realm.map, (current_x, current_y), target_pos, bounds=bounds)
-                if true_distance != float("inf"):
-                    return self.direction_to_index[direction]
-        return self.direction_to_index[(0, 0)]
 
     def execute(self, obs, ml_action):
         action = {}
@@ -138,17 +105,24 @@ class ActionManager:
     def move_to_nearest_resource(self, obs, resource_name):
         # resource_index = self.resource_name_to_id[resource_name]
         tiles = obs.tiles
-        min_map_x = np.min(tiles[:, 0])
-        min_map_y = np.min(tiles[:, 1])
-        max_map_x = np.max(tiles[:, 0])
-        max_map_y = np.max(tiles[:, 1])
-        bounds = (min_map_x, max_map_x, min_map_y, max_map_y)
+        bounds = get_bounds(tiles)
+        min_r, max_r, min_c, max_c = bounds
         resource_dis = []
         start_pos = (obs.agent.row, obs.agent.col)
         for tile in obs.tiles:
+            # 跳过不在center位置的tile
+            if tile[0] < min_r or tile[0] > max_r or tile[1] < min_c or tile[1] > max_c:
+                continue
+            if (tile[0], tile[1]) == start_pos:
+                continue
             if self.material_id_to_name[tile[2]] == resource_name:
                 if resource_name not in self.impassible_tile:
-                    target_pos_list = [(tile[0], tile[1])]
+                    target_pos = (tile[0], tile[1])
+                    min_direction, min_distance = aStar(self.env.realm.map, start_pos, target_pos, bounds=bounds)
+                    if min_distance == 1:  # 不可能比这更近了，直接返回
+                        return self.direction_to_index[min_direction]
+                    elif min_distance != float("inf"):
+                        resource_dis.append((min_direction, min_distance))
                 else:
                     # 处理水和鱼等不可接近的资源
                     four_direction = [(0, 1), (0, -1), (1, 0), (-1, 0)]
@@ -158,17 +132,21 @@ class ActionManager:
                         if self.env.realm.map.is_valid_pos(tile[0] + direction[0], tile[1] + direction[1])
                         and not self.env.realm.map.tiles[tile[0] + direction[0], tile[1] + direction[1]].impassible
                     ]
-                if target_pos_list:
-                    one_resource_dis = []
-                    for target_pos in target_pos_list:
-                        direction, distance = aStar(self.env.realm.map, start_pos, target_pos, bounds=bounds)
-                        one_resource_dis.append((direction, distance))
-                    # print(resource_name)
-                    # print(distances)
-                    one_resource_dis.sort(key=lambda x: x[1])
-                    min_direction = one_resource_dis[0][0]
-                    min_distance = one_resource_dis[0][1]
-                    resource_dis.append((min_direction, min_distance))
+                    if target_pos_list:
+                        one_resource_dis = []
+                        for target_pos in target_pos_list:
+                            if target_pos == start_pos:
+                                continue
+                            direction, distance = aStar(self.env.realm.map, start_pos, target_pos, bounds=bounds)
+                            if distance == 1:  # 不可能比这更近了，直接返回
+                                return self.direction_to_index[direction]
+                            elif distance != float("inf"):
+                                one_resource_dis.append((direction, distance))
+                        if one_resource_dis:
+                            one_resource_dis.sort(key=lambda x: x[1])
+                            min_direction = one_resource_dis[0][0]
+                            min_distance = one_resource_dis[0][1]
+                            resource_dis.append((min_direction, min_distance))
         if resource_dis:
             resource_dis.sort(key=lambda x: x[1])
             direction = resource_dis[0][0]
@@ -178,8 +156,7 @@ class ActionManager:
         # assert min_distance != float("inf")
         return self.direction_to_index[direction]
 
-    def move_to_chase_target(self, obs, entity_id):
-
+    def move_to_area(self, obs, target_area):
         tiles = obs.tiles
         min_map_x = np.min(tiles[:, 0])
         min_map_y = np.min(tiles[:, 1])
@@ -187,15 +164,55 @@ class ActionManager:
         max_map_y = np.max(tiles[:, 1])
         bounds = (min_map_x, max_map_x, min_map_y, max_map_y)
 
+        x_index = self.area_index[target_area][0]
+        y_index = self.area_index[target_area][1]
+        target_x = int(range_midpoints(min_map_x, max_map_x)[x_index])
+        target_y = int(range_midpoints(min_map_y, max_map_y)[y_index])
+
+        strat_pos = (obs.agent.row, obs.agent.col)
+
+        eight_direction = [(0, 1), (0, -1), (1, 0), (-1, 0), (1, 1), (1, -1), (-1, 1), (-1, -1)]
+
+        # 首先尝试区域中点及其周围位置
+        target_pos_list = [(target_x, target_y)]
+        for one_direction in eight_direction:
+            target_pos_list.append((target_x + one_direction[0], target_y + one_direction[1]))
+        for target_pos in target_pos_list:
+            if (
+                self.env.realm.map.is_valid_pos(target_pos[0], target_pos[1])
+                and not self.env.realm.map.tiles[target_pos[0], target_pos[1]].impassible
+            ):
+                direction, distance = aStar(self.env.realm.map, strat_pos, target_pos, bounds=bounds)
+                if distance != float("inf"):
+                    return self.direction_to_index[direction]
+
+        # 最后尝试区域所有位置
+        for tile in obs.tiles:
+            if min_map_x <= tile[0] <= max_map_x and min_map_y <= tile[1] <= max_map_y:
+                if not self.env.realm.map.tiles[tile[0], tile[1]].impassible:
+                    target_pos = (tile[0], tile[1])
+                    direction, distance = aStar(self.env.realm.map, strat_pos, target_pos, bounds=bounds)
+                    if distance != float("inf"):
+                        return self.direction_to_index[direction]
+        return self.direction_to_index[(0, 0)]
+
+    def move_to_chase_target(self, obs, entity_id):
+
+        tiles = obs.tiles
+        bounds = get_bounds(tiles)
+
         start_pos = (obs.agent.row, obs.agent.col)
         target_pos = (
             obs.entities.values[entity_id][2],
             obs.entities.values[entity_id][3],
         )
-
-        # 使用A*算法计算最短路径
-        direction, _ = aStar(self.env.realm.map, start_pos, target_pos, bounds=bounds)
-        return self.direction_to_index[direction]
+        if start_pos == target_pos:
+            return self.direction_to_index[(0, 0)]
+        direction, distance = aStar(self.env.realm.map, start_pos, target_pos, bounds=bounds)
+        if distance == float("inf"):
+            return self.direction_to_index[(0, 0)]
+        else:
+            return self.direction_to_index[direction]
 
     def move(self, obs, ml_action):
         if not ml_action:
@@ -213,18 +230,13 @@ class ActionManager:
             if area_target:
                 direction_index = self.move_to_area(obs, area_target)
                 return direction_index
-        elif "Chase" in ml_action or "Evade" in ml_action:
+        elif "Chase" in ml_action:
             if obs.entities:
                 entity_id_to_index = {entity[0]: i for i, entity in enumerate(obs.entities.values)}
+                print(entity_id_to_index)
             entity_id = self._get_chase_entity_id_from_response(ml_action)
             if entity_id:
                 direction_index = self.move_to_chase_target(obs, entity_id_to_index[entity_id])
-                if direction_index is None:
-                    raise ValueError(f"Invalid move action: {ml_action}")
-                return direction_index
-            entity_id = self._get_evade_entity_id_from_response(ml_action)
-            if entity_id:
-                direction_index = self.move_to_evade_target(obs, entity_id_to_index[entity_id])
                 if direction_index is None:
                     raise ValueError(f"Invalid move action: {ml_action}")
                 return direction_index
@@ -341,7 +353,7 @@ class ActionManager:
     def _get_give_item_id_from_response(self, ml_action, obs):
         item_id_to_index = {item[0]: i for i, item in enumerate(obs.inventory.values)}
         entity_id_to_index = {entity[0]: i for i, entity in enumerate(obs.entities.values)}
-        print(vars(obs.agent)["id"])
+        # print(vars(obs.agent)["id"])
         give_pattern = r"Give level \d+ \w+ with id (\d+) to Player (\d+)"
         match = re.search(give_pattern, ml_action)
         if match:

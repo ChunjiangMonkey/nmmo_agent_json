@@ -4,15 +4,15 @@ experiment:
   # debug: True
 
 env:
-  map_size: 128
-  player_num: 1
-  npc_num: 256
-  horizon: 1024
-  fog_onset: ~
-  fog_speed: 0
+  map_size: 80
+  player_num: 24
+  npc_num: 128
+  horizon: 256
+  fog_onset: 32
+  fog_speed: 0.2
   fog_final_size: 16
   disable_stone: False
-  individual_num: 0
+  individual_num: 24
   competitive_num: 0
   cooperative_num: 0
 

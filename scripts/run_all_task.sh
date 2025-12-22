@@ -23,6 +23,6 @@ for task in "${tasks[@]}"; do
 
     exp_name="${timestamp}_${nick_name}"
     for pid in $(seq 1 $exp_num); do
-        echo "python main.py --exp_name=$exp_name --goal=$task --pid=$pid --config_name=$config_name --debug"
+        echo "python main.py --exp_name=$exp_name --goal=$task --pid=$pid --config_name=$config_name"
     done
 done | parallel -j "${parallel_jobs}" --ungroup
