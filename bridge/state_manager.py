@@ -12,7 +12,7 @@ from constant import (
     RESOURCE_TILE,
     IMPASSIBLE_TILE,
 )
-from utils.path_utils import a_star_bounded as aStar, l1, get_bounds, which_part
+from utils.path_utils import a_star_bounded as aStar, l1, get_bounds, which_part, AREA_TABLE, get_area
 
 
 class StateManager:
@@ -37,17 +37,7 @@ class StateManager:
         self.visited_positions = set()
 
         self.position_to_areas = None
-        self.area_table = {
-            (0, 0): "northwest",
-            (0, 1): "north",
-            (0, 2): "northeast",
-            (1, 0): "west",
-            (1, 1): "center",
-            (1, 2): "east",
-            (2, 0): "southwest",
-            (2, 1): "south",
-            (2, 2): "southeast",
-        }
+        self.area_table = AREA_TABLE
         self.areas = AREA_SPACE
         # self.entity_id_to_index = None
 
@@ -70,15 +60,6 @@ class StateManager:
         dist_to_center = l1((x, y), center)
         return self.area_table[(x_part, y_part)], dist_to_center
 
-    def get_obs_area(self, obs, x, y):
-        tiles = obs.tiles
-        min_map_x = np.min(tiles[:, 0])
-        min_map_y = np.min(tiles[:, 1])
-        max_map_x = np.max(tiles[:, 0])
-        max_map_y = np.max(tiles[:, 1])
-        x_part = which_part(min_map_x, max_map_x, x)
-        y_part = which_part(min_map_y, max_map_y, y)
-        return self.area_table[(x_part, y_part)]
 
     def get_ego_agent_info(self, obs):
         """
@@ -188,7 +169,7 @@ class StateManager:
             for area in self.areas
         }
         for tile in obs.tiles:
-            area = self.get_obs_area(obs, tile[0], tile[1])
+            area = get_area(obs.tiles, tile[0], tile[1])
             fog_value = float(self.env.realm.fog_map[tile[0], tile[1]])
             if fog_value > 0.5:
                 fog_info[area]["in_fog_count"] += 1
@@ -211,7 +192,7 @@ class StateManager:
         for tile in obs.tiles: 
             if (tile[0], tile[1]) == start_pos: # 自己位置的不统计
                 continue
-            area = self.get_obs_area(obs, tile[0], tile[1])
+            area = get_area(obs.tiles, tile[0], tile[1])
             material_name = self.material_id_to_name[tile[2]]
 
             # 统计资源是否可达
@@ -271,7 +252,7 @@ class StateManager:
         area_visited_tile_count = {area: 0 for area in self.areas}
         start_pos = (obs.agent.row, obs.agent.col)
         for tile in obs.tiles:
-            area = self.get_obs_area(obs, tile[0], tile[1])
+            area = get_area(obs.tiles, tile[0], tile[1])
             # 统计是否可通行
             if (
                 self.env.realm.map.is_valid_pos(tile[0], tile[1])
@@ -333,7 +314,7 @@ class StateManager:
                         target_of_attack = f"NPC {-other_entity[0]}" if other_entity[0] < 0 else f"Player {other_entity[0]}"
 
                 entity_pos = (entity[2], entity[3])
-                entity_area = self.get_obs_area(obs, entity[2], entity[3])
+                entity_area = get_area(obs.tiles, entity_pos[0], entity_pos[1])
 
                 entity_attackable = False
                 player_attackable = False

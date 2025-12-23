@@ -1,4 +1,4 @@
-openai_base_url="http://35.220.164.252:3888/v1"
+openai_base_url="http://35.220.164.252:3888/v1/"
 openai_api_key="sk-rlliqqv0laPsXkxE64nmGZdorhw23FcaLKpGHkgHp45GVijS"
 
 llama_base_url="http://localhost:8000/v1"

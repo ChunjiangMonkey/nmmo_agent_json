@@ -2,6 +2,17 @@ import heapq
 import numpy as np
 from nmmo.lib.utils import in_bounds
 
+AREA_TABLE = {
+    (0, 0): "northwest",
+    (0, 1): "north",
+    (0, 2): "northeast",
+    (1, 0): "west",
+    (1, 1): "center",
+    (1, 2): "east",
+    (2, 0): "southwest",
+    (2, 1): "south",
+    (2, 2): "southeast",
+}
 
 CUTOFF = 100
 
@@ -15,14 +26,6 @@ def l1(start, goal):
 def adjacentPos(pos):
     r, c = pos
     return [(r - 1, c), (r, c - 1), (r + 1, c), (r, c + 1)]
-
-
-def get_bounds(tiles):
-    min_r = np.min(tiles[:, 0])
-    max_r = np.max(tiles[:, 0])
-    min_c = np.min(tiles[:, 1])
-    max_c = np.max(tiles[:, 1])
-    return (min_r, max_r, min_c, max_c)
 
 
 def which_part(start, end, x):
@@ -51,50 +54,65 @@ def which_part(start, end, x):
         return 1
     else:
         return 2
-    
-def a_star(realm_map, start, goal, cutoff=CUTOFF):
-    if start == goal:
-        return (0, 0), 0
 
-    tiles = realm_map.tiles
-    pq = [(l1(start, goal), 0, start)]  # (f, g, node)
-    parent, g_score = {}, {start: 0}
-    closed = set()
-    closest, closest_h = start, l1(start, goal)
 
-    while pq and cutoff:
-        cutoff -= 1
-        f, g, cur = heapq.heappop(pq)
-        if cur in closed:  # 丢弃旧条目
-            continue
-        if cur == goal:  # 找到最短路
-            break
-        closed.add(cur)
+def get_center_bounds(tiles):
+    min_map_x = np.min(tiles[:, 0])
+    min_map_y = np.min(tiles[:, 1])
+    max_map_x = np.max(tiles[:, 0])
+    max_map_y = np.max(tiles[:, 1])
 
-        for nxt in adjacentPos(cur):
-            if not in_bounds(*nxt, tiles.shape):
-                continue
-            if realm_map.habitable_tiles[nxt] == 0:
-                continue
-            tentative_g = g + 1
-            if tentative_g < g_score.get(nxt, float("inf")):
-                g_score[nxt] = tentative_g
-                parent[nxt] = cur
-                h = l1(nxt, goal)
-                heapq.heappush(pq, (tentative_g + h, tentative_g, nxt))
-                if h < closest_h:
-                    closest, closest_h = nxt, h
+    n = max_map_x - min_map_x + 1
+    base = n // 3
+    remainder = n % 3
 
-    # 失败时用最近点
-    end = goal if goal in parent else closest
-    if end not in parent:
-        return (0, 0), float("inf")
+    if remainder == 0:
+        L1 = L2 = base
+    elif remainder == 1:
+        L1 = base
+        L2 = base + 1
+    else:  # remainder == 2
+        L1 = base + 1
+        L2 = base
 
-    # 回溯一步得到方向
-    while parent[end] != start:
-        end = parent[end]
-    dr, dc = end[0] - start[0], end[1] - start[1]
-    return (dr, dc), g_score.get(goal, float("inf"))
+    b1_end_x = min_map_x + L1 - 1
+    b2_end_x = b1_end_x + L2
+
+    n = max_map_y - min_map_y + 1
+    base = n // 3
+    remainder = n % 3
+
+    if remainder == 0:
+        L1 = L2 = base
+    elif remainder == 1:
+        L1 = base
+        L2 = base + 1
+    else:  # remainder == 2
+        L1 = base + 1
+        L2 = base
+
+    b1_end_y = min_map_y + L1 - 1
+    b2_end_y = b1_end_y + L2
+
+    return (b1_end_x + 1, b2_end_x, b1_end_y + 1, b2_end_y)
+
+
+def get_bounds(tiles):
+    min_r = np.min(tiles[:, 0])
+    max_r = np.max(tiles[:, 0])
+    min_c = np.min(tiles[:, 1])
+    max_c = np.max(tiles[:, 1])
+    return (min_r, max_r, min_c, max_c)
+
+
+def get_area(tiles, x, y):
+    min_map_x = np.min(tiles[:, 0])
+    min_map_y = np.min(tiles[:, 1])
+    max_map_x = np.max(tiles[:, 0])
+    max_map_y = np.max(tiles[:, 1])
+    x_part = which_part(min_map_x, max_map_x, x)
+    y_part = which_part(min_map_y, max_map_y, y)
+    return AREA_TABLE[(x_part, y_part)]
 
 
 def a_star_bounded(realm_map, start, goal, bounds=None):

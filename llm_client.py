@@ -57,12 +57,19 @@ class LLMClient:
     def get_response(self, message):
         # return
         try:
-            response = self.client.chat.completions.create(
-                model=self.model,
-                messages=message,
-                temperature=0.1,
-                extra_body={"chat_template_kwargs": {"enable_thinking": self.enable_thinking}},
-            )
+            if "gpt" in self.model:
+                response = self.client.chat.completions.create(
+                    model=self.model,
+                    messages=message,
+                    temperature=0.1,
+                )
+            else:
+                response = self.client.chat.completions.create(
+                    model=self.model,
+                    messages=message,
+                    temperature=0.1,
+                    extra_body={"chat_template_kwargs": {"enable_thinking": self.enable_thinking}},
+                )
 
             usage = response.usage
             self.prompt_tokens += int(usage.prompt_tokens)

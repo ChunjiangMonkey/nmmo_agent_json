@@ -15,7 +15,7 @@ from constant import (
     IMPASSIBLE_TILE,
 )
 
-from utils.path_utils import a_star_bounded as aStar, get_bounds
+from utils.path_utils import a_star_bounded as aStar, get_bounds, get_area, get_center_bounds
 
 
 # pylint: disable=invalid-name
@@ -114,6 +114,8 @@ class ActionManager:
             if tile[0] < min_r or tile[0] > max_r or tile[1] < min_c or tile[1] > max_c:
                 continue
             if (tile[0], tile[1]) == start_pos:
+                continue
+            if get_area(tiles, tile[0], tile[1]) != "center":
                 continue
             if self.material_id_to_name[tile[2]] == resource_name:
                 if resource_name not in self.impassible_tile:

@@ -187,24 +187,25 @@ class ActionModule:
 
         # self.pos_last_step = pos
         if state_info["agent"]["agent_in_combat"]:
-            for entity in state_info["entity"]["center"]:
-                if entity["in_combat"]:
-                # if entity["in_combat"] and entity["type"] != "passive":
-                    if state_info["agent"]["name"] == entity["attacker"]:
-                        return True
-                    if state_info["agent"]["name"] == entity["target_of_attack"]:
-                        return True
+            return True
+            # for entity in state_info["entity"]["center"]:
+            #     if entity["in_combat"]:
+            #         # if entity["in_combat"] and entity["type"] != "passive":
+            #         if state_info["agent"]["name"] == entity["attacker"]:
+            #             return True
+            #         if state_info["agent"]["name"] == entity["target_of_attack"]:
+            #             return True
 
         # 开始出现死亡迷雾
         if tick == self.config.DEATH_FOG_ONSET:
             return True
 
         # 智能体生命垂危
-        # if state_info["agent"]["food"] < 30:
-        #     return True
-        # if state_info["agent"]["water"] < 30:
-        #     return True
-        if state_info["agent"]["health"] < 60:
+        if state_info["agent"]["food"] < 30:
+            return True
+        if state_info["agent"]["water"] < 30:
+            return True
+        if state_info["agent"]["health"] < 50:
             return True
 
         # 出现了新的NPC
@@ -232,7 +233,7 @@ class ActionModule:
         #     return False
         if "Move to the nearest" in move_action:
             res_name = move_action.split("Move to the nearest ")[1].split(" tile")[0]
-            if  res_name != "Water" and res_name != "Fish":
+            if res_name != "Water" and res_name != "Fish":
                 if tile_resource == res_name:
                     return True
             elif res_name == "Fish":
@@ -241,8 +242,7 @@ class ActionModule:
             elif res_name == "Water":
                 if state_info["agent"]["water_around"]:
                     return True
-            
-            
+
                 # for harvest_item in last_record["harvest"]:
                 #     if harvest_item["item_res"] == res_name:
                 #         print(f"上一次动作完成，采集了{res_name}")
@@ -259,11 +259,11 @@ class ActionModule:
                         return True
 
         #  到达了新area
-        new_pos = (state_info["agent"]["row"], state_info["agent"]["col"])
-        old_pos = (old_state_info["agent"]["row"], old_state_info["agent"]["col"])
+        # new_pos = (state_info["agent"]["row"], state_info["agent"]["col"])
+        # old_pos = (old_state_info["agent"]["row"], old_state_info["agent"]["col"])
 
-        if utils.linf_single(new_pos, old_pos) >= 5:
-            return True
+        # if utils.linf_single(new_pos, old_pos) >= 5:
+        #     return True
         return False
 
     def check_level(self, agent_info, item):

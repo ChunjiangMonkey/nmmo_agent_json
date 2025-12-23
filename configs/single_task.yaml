@@ -19,13 +19,13 @@ env:
 
 
 agent:
-  model_name: "llama"
+  model_name: "gpt-5.1"
   enable_llm_thinking: False
   use_information_reduction: False
   use_strategy: False
   use_interaction_memory: False
   allow_give_action: True
-  max_execute_step: 10
+  max_execute_step: 5
   max_verify_time: 0
   share_strategy: False
   share_game_rule_module: False

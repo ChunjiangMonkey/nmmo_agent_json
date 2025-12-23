@@ -76,6 +76,387 @@ def save_config_file(config, save_dir, filename="config.yaml"):
     return config_path
 
 
+def build_file_save_path(exp_name, goal, pid, run_task):
+    if run_task:
+        return f"llm_io/{exp_name}/{goal}/{pid}"
+    return f"llm_io/{exp_name}/{pid}"
+
+
+def build_goals_and_player_types(
+    run_survive,
+    goal,
+    horizon,
+    player_num,
+    individual_num,
+    competitive_num,
+    cooperative_num,
+):
+    goals = []
+    player_types = []
+    if run_survive:
+        goals.append(create_Survive_task(horizon)[2])  # 添加生存任务
+        for skill in nmmo_skill.COMBAT_SKILL + nmmo_skill.HARVEST_SKILL:
+            goals.append(create_AttainSkill_task(skill, 10, 1)[2])
+        goals.append(create_DefeatEntity_task("npc", 1, 50)[2])
+        goal_description = None
+        for _ in range(individual_num):
+            player_types.append("individual")
+        for _ in range(competitive_num):
+            player_types.append("competitive")
+        for _ in range(cooperative_num):
+            player_types.append("cooperative")
+        np.random.shuffle(player_types)
+    else:
+        _, goal_description, goal_fun = task_map[goal]
+        goals.append(goal_fun)
+        for _ in range(player_num):
+            player_types.append("task")
+    return goals, player_types, goal_description
+
+
+def build_map_config(
+    map_size,
+    horizon,
+    player_num,
+    npc_num,
+    fog_onset,
+    fog_speed,
+    fog_final_size,
+    disable_stone,
+):
+    if map_size < 40:
+        implemented_map_config = nc.Small
+    elif map_size < 200:
+        implemented_map_config = nc.Medium
+    else:
+        implemented_map_config = nc.Large
+
+    class CustomConfig(
+        implemented_map_config,
+        nc.Terrain,
+        nc.Resource,
+        nc.Combat,
+        nc.NPC,
+        nc.Progression,
+        nc.Item,
+        nc.Equipment,
+        nc.Profession,
+    ):
+
+        PATH_MAPS = None
+        MAP_FORCE_GENERATION = True
+        MAP_GENERATE_PREVIEWS = True
+        MAP_PREVIEW_DOWNSCALE = 4
+        ALLOW_MULTI_TASKS_PER_AGENT = True
+        MAP_CENTER = map_size
+        MAP_SIZE = map_size + 16
+        HORIZON = horizon
+        PLAYER_N = player_num
+        NPC_N = npc_num
+        DEATH_FOG_ONSET = fog_onset
+        DEATH_FOG_SPEED = fog_speed
+        DEATH_FOG_FINAL_SIZE = fog_final_size
+        TERRAIN_DISABLE_STONE = disable_stone
+
+    return CustomConfig()
+
+
+def build_strategy_managers(run_survive, use_strategy, share_strategy, player_num, model_name, debug):
+    strategy_managers = []
+    if run_survive and use_strategy:
+        if share_strategy:
+            strategy_manager = StrategyManager(model_name, debug=debug)
+            strategy_managers = [strategy_manager] * player_num
+        else:
+            strategy_managers = [StrategyManager(model_name, debug=debug) for _ in range(player_num)]
+    return strategy_managers
+
+
+def create_episode_paths(file_save_path, episode):
+    episode_save_path = f"{file_save_path}/{episode}/"
+    prompt_path = f"{episode_save_path}/prompt"
+    replay_path = f"{episode_save_path}/replays"
+    task_path = f"{episode_save_path}/tasks"
+    map_path = f"{episode_save_path}/maps"
+
+    os.makedirs(prompt_path, exist_ok=True)
+    os.makedirs(replay_path, exist_ok=True)
+    os.makedirs(task_path, exist_ok=True)
+    os.makedirs(map_path, exist_ok=True)
+
+    return {
+        "episode_save_path": episode_save_path,
+        "prompt_path": prompt_path,
+        "replay_path": replay_path,
+        "task_path": task_path,
+        "map_path": map_path,
+    }
+
+
+def reset_strategy_managers_for_episode(
+    run_survive,
+    use_strategy,
+    share_strategy,
+    strategy_managers,
+    player_num,
+    episode_save_path,
+):
+    if run_survive and use_strategy:
+        if share_strategy:
+            strategy_path = f"{episode_save_path}/strategies"
+            os.makedirs(strategy_path, exist_ok=True)
+            strategy_managers[0].reset(strategy_path)
+        else:
+            for i in range(player_num):
+                strategy_path = f"{episode_save_path}/{i+1}/strategies"
+                os.makedirs(strategy_path, exist_ok=True)
+                strategy_managers[i].reset(strategy_path)
+
+
+def build_env_tasks(goals, env):
+    env_tasks = []
+    for goal in goals:
+        for task in make_task_from_spec(env.possible_agents, [goal] * len(env.possible_agents)):
+            env_tasks.append(task)
+    return env_tasks
+
+
+def create_players(
+    player_num,
+    prompt_path,
+    model_name,
+    map_config,
+    env,
+    horizon,
+    player_types,
+    goal_description,
+    run_task,
+    use_information_reduction,
+    allow_give_action,
+    use_interaction_memory,
+    enable_llm_thinking,
+    max_execute_step,
+    max_verify_time,
+    debug,
+):
+    players = []
+    for i in range(player_num):
+        save_path = f"{prompt_path}/{i+1}"
+        os.makedirs(save_path, exist_ok=True)
+        player = LLMPlayer(
+            model_name,
+            map_config,
+            env,
+            horizon,
+            save_path,
+            player_role=player_types[i],
+            goal=goal_description,
+            run_task=run_task,
+            use_information_reduction=use_information_reduction,
+            allow_give_action=allow_give_action,
+            use_interaction_memory=use_interaction_memory,
+            enable_llm_thinking=enable_llm_thinking,
+            max_execute_step=max_execute_step,
+            max_verify_time=max_verify_time,
+            debug=debug,
+        )
+        players.append(player)
+        env.realm.players[i + 1].name = f"player_{i+1}_{player_types[i]}"
+    return players
+
+
+def collect_actions(players, alive_players, env, step):
+    with concurrent.futures.ThreadPoolExecutor() as executor:
+        action_seq = list(
+            executor.map(
+                lambda player_id: players[player_id - 1].act(env.obs[player_id], step),
+                alive_players,
+            )
+        )
+    return {a: action_seq[i] for i, a in enumerate(alive_players)}
+
+
+def update_task_progress(task_progress, env, step):
+    task_mean = {}
+    for agent_id in env.agents:
+        for task in env.agent_task_map[agent_id]:
+            task_name = readable_task_name.get(task.spec_name, task.spec_name)
+            if task_name not in task_progress[agent_id].keys():
+                task_progress[agent_id][task_name] = {}
+            task_progress[agent_id][task_name]["progress"] = task._progress
+            if task.completed:
+                task_progress[agent_id][task_name]["completed"] = True
+                task_progress[agent_id][task_name]["completed_tick"] = step
+            else:
+                task_progress[agent_id][task_name]["completed"] = False
+                task_progress[agent_id][task_name]["completed_tick"] = -1
+            if task_name in task_mean.keys():
+                task_mean[task_name].append(task._progress)
+            else:
+                task_mean[task_name] = [task._progress]
+
+    all_task_completed = all(
+        task_progress[agent_id][task_name]["completed"]
+        for agent_id in task_progress.keys()
+        for task_name in task_progress[agent_id].keys()
+    )
+
+    return task_mean, all_task_completed
+
+
+def build_game_status(task_mean, step, start_time, end_time, terminated, truncated, players):
+    game_status = {}
+    game_status["program_run_time"] = f"{end_time - start_time:.4f}s"
+    for task_name in task_mean.keys():
+        game_status[task_name] = np.mean(task_mean[task_name])
+    game_status["current_time"] = step
+    all_agent_dead = all(terminated.values())
+    game_end = all(truncated.values())
+
+    game_status["prompt_tokens"] = np.mean([player.token_usage["prompt_tokens"] for player in players])
+    game_status["completion_tokens"] = np.mean([player.token_usage["completion_tokens"] for player in players])
+    game_status["total_tokens"] = np.mean([player.token_usage["total_tokens"] for player in players])
+
+    return game_status, all_agent_dead, game_end
+
+
+def update_alive_players(terminated, players, env, step):
+    alive_players = []
+    for agent_id in terminated.keys():
+        if terminated[agent_id]:
+            players[agent_id - 1].update_strategy(env.obs[agent_id], step)
+        else:
+            alive_players.append(agent_id)
+    return alive_players
+
+
+def run_episode(
+    episode,
+    file_save_path,
+    map_config,
+    goals,
+    player_num,
+    player_types,
+    goal_description,
+    model_name,
+    horizon,
+    replay_save_interval,
+    run_task,
+    use_information_reduction,
+    allow_give_action,
+    use_interaction_memory,
+    enable_llm_thinking,
+    max_execute_step,
+    max_verify_time,
+    debug,
+    run_survive,
+    use_strategy,
+    share_strategy,
+    strategy_managers,
+    pbar,
+):
+    paths = create_episode_paths(file_save_path, episode)
+    map_config.PATH_MAPS = paths["map_path"]
+
+    env = nmmo.Env(config=map_config)
+    event_manager = EventManager(player_num)
+
+    reset_strategy_managers_for_episode(
+        run_survive,
+        use_strategy,
+        share_strategy,
+        strategy_managers,
+        player_num,
+        paths["episode_save_path"],
+    )
+
+    env.tasks = build_env_tasks(goals, env)
+    env.reset()
+    env._map_task_to_agent()
+
+    replay_helper = FileReplayHelper()
+    players = create_players(
+        player_num,
+        paths["prompt_path"],
+        model_name,
+        map_config,
+        env,
+        horizon,
+        player_types,
+        goal_description,
+        run_task,
+        use_information_reduction,
+        allow_give_action,
+        use_interaction_memory,
+        enable_llm_thinking,
+        max_execute_step,
+        max_verify_time,
+        debug,
+    )
+
+    task_progress = {a: {} for a in env.agents}
+    game_status_all = {}
+    alive_players = list(range(1, player_num + 1))
+
+    env.realm.record_replay(replay_helper)
+    replay_helper.reset()
+
+    start_time = time.time()
+    for step in range(1, horizon + 1):  # 使用命令行参数中的步数
+        actions = collect_actions(players, alive_players, env, step)
+        obs, rewards, terminated, truncated, infos = env.step(actions)
+        current_events = env.realm.event_log.get_data(tick=env.realm.tick)
+        record = event_manager.update_record(current_events)
+        for player_id in alive_players:
+            players[player_id - 1].update_memory(step, record[player_id])
+
+        end_time = time.time()
+        if step % replay_save_interval == 0:
+            replay_helper.save(f"{paths['replay_path']}/{step}_{model_name}", compress=True)
+
+        task_mean, all_task_completed = update_task_progress(task_progress, env, step)
+        game_status, all_agent_dead, game_end = build_game_status(
+            task_mean,
+            step,
+            start_time,
+            end_time,
+            terminated,
+            truncated,
+            players,
+        )
+
+        alive_players = update_alive_players(terminated, players, env, step)
+        game_status["alive_player_num"] = len(alive_players)
+
+        if all_agent_dead or game_end or (run_task and all_task_completed):
+            if all_agent_dead:
+                game_status["status"] = "all player dead"
+            elif run_task and all_task_completed:
+                game_status["status"] = "all task completed"
+            elif game_end:
+                game_status["status"] = "game end"
+            else:
+                game_status["status"] = "running"
+            save_progress(
+                task_progress,
+                f"{paths['task_path']}/task_progress_{model_name}.json",
+            )
+            game_status_all[step] = game_status
+            save_progress(game_status_all, f"{paths['task_path']}/game_status_{model_name}.json")
+            break
+
+        game_status["status"] = "running"
+        save_progress(
+            task_progress,
+            f"{paths['task_path']}/task_progress_{model_name}.json",
+        )
+        game_status_all[step] = game_status
+        save_progress(game_status_all, f"{paths['task_path']}/game_status_{model_name}.json")
+        pbar.update(1)
+
+    replay_helper.save(f"{paths['replay_path']}/finish_{model_name}", compress=True)
+
+
 def main(args):
     data_time = datetime.now(pytz.timezone("Asia/Shanghai")).strftime("%Y-%m-%d_%H-%M-%S")  # 实验开始时间
     # 应用补丁
@@ -121,280 +502,69 @@ def main(args):
     max_verify_time = config["agent"]["max_verify_time"]  # 是否使用验证
     max_execute_step = config["agent"]["max_execute_step"]  # 最大执行步数
     share_strategy = config["agent"]["share_strategy"]  # 是否共享策略池
-    if run_task:
-        file_save_path = f"llm_io/{exp_name}/{goal}/{pid}"
-    else:
-        file_save_path = f"llm_io/{exp_name}/{pid}"
+    file_save_path = build_file_save_path(exp_name, goal, pid, run_task)
     # 保存本次运行使用的配置
     save_config_file(config, file_save_path)
     # 根据任务类型选择对应的任务
     # print(task_map)
-    goals = []
-    player_types = []
-    if run_survive:
-        goals.append(create_Survive_task(horizon)[2])  # 添加生存任务
-        for skill in nmmo_skill.COMBAT_SKILL + nmmo_skill.HARVEST_SKILL:
-            goals.append(create_AttainSkill_task(skill, 10, 1)[2])
-        goals.append(create_DefeatEntity_task("npc", 1, 50)[2])
-        goal_description = None
-        for i in range(individual_num):
-            player_types.append("individual")
-        for i in range(competitive_num):
-            player_types.append("competitive")
-        for i in range(cooperative_num):
-            player_types.append("cooperative")
-        np.random.shuffle(player_types)
-
-    else:
-        _, goal_description, goal_fun = task_map[goal]
-        goals.append(goal_fun)
-        for i in range(player_num):
-            player_types.append("task")
+    goals, player_types, goal_description = build_goals_and_player_types(
+        run_survive,
+        goal,
+        horizon,
+        player_num,
+        individual_num,
+        competitive_num,
+        cooperative_num,
+    )
     # for goal in goals:
     #     print(readable_task_name[goal.name])
 
-    # 创建配置
-    if map_size < 40:
-        Implemented_Map_Config = nc.Small
-    elif map_size < 200:
-        Implemented_Map_Config = nc.Medium
-    else:
-        Implemented_Map_Config = nc.Large
-
-    class CustomConfig(
-        Implemented_Map_Config,
-        nc.Terrain,
-        nc.Resource,
-        nc.Combat,
-        nc.NPC,
-        nc.Progression,
-        nc.Item,
-        nc.Equipment,
-        nc.Profession,
-    ):
-
-        PATH_MAPS = None
-        MAP_FORCE_GENERATION = True
-        MAP_GENERATE_PREVIEWS = True
-        MAP_PREVIEW_DOWNSCALE = 4
-        ALLOW_MULTI_TASKS_PER_AGENT = True
-        MAP_CENTER = map_size
-        MAP_SIZE = map_size + 16
-        HORIZON = horizon
-        PLAYER_N = player_num
-        NPC_N = npc_num
-        DEATH_FOG_ONSET = fog_onset
-        DEATH_FOG_SPEED = fog_speed
-        DEATH_FOG_FINAL_SIZE = fog_final_size
-        TERRAIN_DISABLE_STONE = disable_stone
-
-    map_config = CustomConfig()
-    strategy_managers = []
-    if run_survive and use_strategy:
-        if share_strategy:
-            strategy_manager = StrategyManager(model_name, debug=debug)
-            strategy_managers = [strategy_manager] * player_num
-        else:
-            strategy_managers = [StrategyManager(model_name, debug=debug) for _ in range(player_num)]
+    map_config = build_map_config(
+        map_size,
+        horizon,
+        player_num,
+        npc_num,
+        fog_onset,
+        fog_speed,
+        fog_final_size,
+        disable_stone,
+    )
+    strategy_managers = build_strategy_managers(
+        run_survive,
+        use_strategy,
+        share_strategy,
+        player_num,
+        model_name,
+        debug,
+    )
     # print(len(strategy_managers))
     with tqdm(total=episode_num * horizon, desc="Running steps") as pbar:
         for episode in range(episode_num):
-            # 创建保存路径
-            episode_save_path = f"{file_save_path}/{episode}/"
-            prompt_path = f"{episode_save_path}/prompt"
-            replay_path = f"{episode_save_path}/replays"
-            task_path = f"{episode_save_path}/tasks"
-            map_path = f"{episode_save_path}/maps"
-
-            os.makedirs(prompt_path, exist_ok=True)
-            os.makedirs(replay_path, exist_ok=True)
-            os.makedirs(task_path, exist_ok=True)
-            os.makedirs(map_path, exist_ok=True)
-
-            map_config.PATH_MAPS = map_path
-            # strategy_manager.reset(strategy_path, data_time)
-
-            env = nmmo.Env(config=map_config)
-
-            event_manager = EventManager(player_num)
-
-            if run_survive and use_strategy:
-                if share_strategy:
-                    strategy_path = f"{episode_save_path}/strategies"
-                    os.makedirs(strategy_path, exist_ok=True)
-                    strategy_managers[0].reset(strategy_path)
-                else:
-                    for i in range(player_num):
-                        strategy_path = f"{episode_save_path}/{i+1}/strategies"
-                        os.makedirs(strategy_path, exist_ok=True)
-                        strategy_managers[i].reset(strategy_path)
-
-            # 定义任务
-            env_tasks = []
-            for goal in goals:
-                for task in make_task_from_spec(env.possible_agents, [goal] * len(env.possible_agents)):
-                    env_tasks.append(task)
-
-            env.tasks = env_tasks
-            env.reset()
-            env._map_task_to_agent()
-
-            # 设置replay helper
-            replay_helper = FileReplayHelper()
-            players = []
-
-            task_progress = {a: {} for a in env.agents}
-            game_status_all = {}
-
-            for i in range(player_num):
-                save_path = f"{prompt_path}/{i+1}"
-                os.makedirs(save_path, exist_ok=True)
-                player = LLMPlayer(
-                    model_name,
-                    map_config,
-                    env,
-                    horizon,
-                    save_path,
-                    player_role=player_types[i],
-                    goal=goal_description,
-                    run_task=run_task,
-                    use_information_reduction=use_information_reduction,
-                    allow_give_action=allow_give_action,
-                    use_interaction_memory=use_interaction_memory,
-                    enable_llm_thinking=enable_llm_thinking,
-                    max_execute_step=max_execute_step,
-                    max_verify_time=max_verify_time,
-                    debug=debug,
-                )
-                players.append(player)
-                env.realm.players[i + 1].name = f"player_{i+1}_{player_types[i]}"
-
-            alive_players = list(range(1, player_num + 1))
-
-            env.realm.record_replay(replay_helper)
-            replay_helper.reset()
-
-            # 用于记录任务完成状态
-
-            # for a in env.agents:
-            #     provide_item(env.realm, a, Hat, level=1, quantity=1)
-            #     provide_item(env.realm, a, Bottom, level=1, quantity=1)
-            #     provide_item(env.realm, a, Top, level=1, quantity=1)
-
-            start_time = time.time()
-            for step in range(1, horizon + 1):  # 使用命令行参数中的步数
-                # a is the id of player
-                if True:
-                    # try:
-                    with concurrent.futures.ThreadPoolExecutor() as executor:
-                        action_seq = list(
-                            executor.map(
-                                lambda player_id: players[player_id - 1].act(env.obs[player_id], step),
-                                alive_players,
-                            )
-                        )
-                    actions = {a: action_seq[i] for i, a in enumerate(alive_players)}
-                    obs, rewards, terminated, truncated, infos = env.step(actions)
-                    current_events = env.realm.event_log.get_data(tick=env.realm.tick)
-                    record = event_manager.update_record(current_events)
-                    for player_id in alive_players:
-                        players[player_id - 1].update_memory(step, record[player_id])
-
-                # except Exception as e:
-                #     print(e)
-                #     game_status["status"] = "bug"
-                #     game_status["bug_reason"] = str(e)
-                #     save_progress(
-                #         task_progress,
-                #         f"{task_path}/task_progress_{model_name}.json",
-                #     )
-                #     save_progress(
-                #         game_status, f"{task_path}/game_status_{model_name}.json"
-                #     )
-                #     break
-                end_time = time.time()
-                if step % replay_save_interval == 0:
-                    replay_helper.save(f"{replay_path}/{step}_{model_name}", compress=True)
-
-                # 更新任务完成状态
-                task_mean = {}
-                game_status = {}
-
-                for agent_id in env.agents:
-                    # task_progress[agent_id]["current_tick"] = step
-                    for task in env.agent_task_map[agent_id]:
-                        # 转换成可读的任务名称
-                        if task.spec_name in readable_task_name.keys():
-                            task_name = readable_task_name[task.spec_name]
-                        else:
-                            task_name = task.spec_name
-                        if task_name not in task_progress[agent_id].keys():
-                            task_progress[agent_id][task_name] = {}
-                        task_progress[agent_id][task_name]["progress"] = task._progress
-                        if task.completed:
-                            task_progress[agent_id][task_name]["completed"] = True
-                            task_progress[agent_id][task_name]["completed_tick"] = step
-                        else:
-                            task_progress[agent_id][task_name]["completed"] = False
-                            task_progress[agent_id][task_name]["completed_tick"] = -1
-                        if task_name in task_mean.keys():
-                            task_mean[task_name].append(task._progress)
-                        else:
-                            task_mean[task_name] = [task._progress]
-
-                all_task_completed = all(
-                    task_progress[agent_id][task_name]["completed"]
-                    for agent_id in task_progress.keys()
-                    for task_name in task_progress[agent_id].keys()
-                )
-
-                # 更新游戏状态
-                game_status["program_run_time"] = f"{end_time - start_time:.4f}s"
-                for task_name in task_mean.keys():
-                    game_status[task_name] = np.mean(task_mean[task_name])
-                game_status["current_time"] = step
-                all_agent_dead = all(terminated.values())
-                game_end = all(truncated.values())
-                # print(json.dumps(task_progress, indent=4))
-
-                alive_players = []
-                for agent_id in terminated.keys():
-                    if terminated[agent_id]:
-                        players[agent_id - 1].update_strategy(env.obs[agent_id], step)
-                    else:
-                        alive_players.append(agent_id)
-                game_status["alive_player_num"] = len(alive_players)
-
-                game_status["prompt_tokens"] = np.mean([player.token_usage["prompt_tokens"] for player in players])
-                game_status["completion_tokens"] = np.mean([player.token_usage["completion_tokens"] for player in players])
-                game_status["total_tokens"] = np.mean([player.token_usage["total_tokens"] for player in players])
-
-                if all_agent_dead or game_end or (run_task and all_task_completed):
-                    if all_agent_dead:
-                        game_status["status"] = "all player dead"
-                    elif run_task and all_task_completed:
-                        game_status["status"] = "all task completed"
-                    elif game_end:
-                        game_status["status"] = "game end"
-                    else:
-                        game_status["status"] = "running"
-                    save_progress(
-                        task_progress,
-                        f"{task_path}/task_progress_{model_name}.json",
-                    )
-                    game_status_all[step] = game_status
-                    save_progress(game_status_all, f"{task_path}/game_status_{model_name}.json")
-                    break
-                else:
-                    game_status["status"] = "running"
-                    save_progress(
-                        task_progress,
-                        f"{task_path}/task_progress_{model_name}.json",
-                    )
-                    game_status_all[step] = game_status
-                    save_progress(game_status_all, f"{task_path}/game_status_{model_name}.json")
-                pbar.update(1)
-            replay_helper.save(f"{replay_path}/finish_{model_name}", compress=True)
+            run_episode(
+                episode,
+                file_save_path,
+                map_config,
+                goals,
+                player_num,
+                player_types,
+                goal_description,
+                model_name,
+                horizon,
+                replay_save_interval,
+                run_task,
+                use_information_reduction,
+                allow_give_action,
+                use_interaction_memory,
+                enable_llm_thinking,
+                max_execute_step,
+                max_verify_time,
+                debug,
+                run_survive,
+                use_strategy,
+                share_strategy,
+                strategy_managers,
+                pbar,
+            )
     pbar.close()
 
 
