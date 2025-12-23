@@ -31,9 +31,7 @@ def generate_task_system_prompt(task_response_format, strategies=None, previous_
     return prompt_template
 
 
-def generate_action_system_prompt(
-    action_response_format, action_type, player_role, use_fog=False, goal=None, plan=None, feedback=None
-):
+def generate_action_system_prompt(action_response_format, action_type, player_role, use_fog=False, feedback=None):
     # player_role包括任务型(task)、生存型(individual)、竞争型(competitive)、合作型(cooperative)
     action_response_format = json.dumps(action_response_format, indent=4)
     if use_fog:
@@ -77,7 +75,7 @@ def generate_action_system_prompt(
 
     if feedback:
         prompt_template += "In this step, I have already selected a candidate action (not yet executed). My verifier thinks it is not optimal and provides me with feedback. When you select action, take that feedback into consideration.\n"
-    prompt_template += f"Note: Survival is the top priority. Your entire response must be a single valid JSON object in the following format:\n{action_response_format}\nDo not include any text outside of the JSON object. "
+    prompt_template += f"Your entire response must be a single valid JSON object in the following format:\n{action_response_format}\nDo not include any text outside of the JSON object. "
     return prompt_template
 
 
@@ -89,7 +87,7 @@ def generate_action_verify_system_prompt(
     if player_role == "task":
         verifier_goal += " ; (2) complete my long-term goal as quickly as possible"
     else:
-        verifier_goal+="; (2) consistent with my character design"
+        verifier_goal += "; (2) consistent with my character design"
     if plan:
         verifier_goal += "; (3) follow my plan"
     verifier_goal += "."
@@ -195,4 +193,60 @@ def generate_action_verify_user_prompt(
 
 def generate_strategy_update_user_prompt(game_mechanics, game_state):
     prompt_template = f"# Game Mechanics\n{game_mechanics}\n\n# Game State\n{game_state}"
+    return prompt_template
+
+
+# =========== Assistant Prompt ==========
+
+
+def generate_assistant_system_prompt(action_response_format, player_role, assistant_role, use_fog=False):
+    action_response_format = json.dumps(action_response_format, indent=4)
+    if use_fog:
+        prompt_template = "You are an AI assistant in an open-world survival game. In this game, players' survival is challenged by a lack of food or water, expanding toxic fog, aggressive NPCs, and even other hostile players. "
+    else:
+        prompt_template = "You are an AI assistant in an open-world survival game. In this game, players' survival is challenged by a lack of food or water, aggressive NPCs, and even other hostile players. "
+    if player_role == "task":
+        prompt_template += "I need you help me select an action for my game character to ensure my character's survival and achieve my long-term goal as quickly as possible. "
+    else:
+        prompt_template += "I want my game character to survive as long as possible. "
+    prompt_template += "Now I am choosing an action for my game character. The available actions can be categorized into four types: maintaining survival, harvesting resources, exploration, and combat. "
+    if assistant_role == "exploration":
+        prompt_template += "Your goal is to persuade me as strongly as possible to choose an exploration action. Therefore, you need to select an appropriate exploration action and provide compelling reasons for choosing this action. To strengthen your persuasion, you should clearly explain—based on the game rules and the current game state—how the exploration action you choose will benefit progress toward achieving the goal. "
+
+    elif assistant_role == "survival":
+        prompt_template += "Your goal is to persuade me as strongly as possible to choose a survival action. Therefore, you need to select an appropriate survival action and provide compelling reasons for choosing this action. To strengthen your persuasion, you should clearly explain—based on the game rules and the current game state—how the survival action you choose will benefit progress toward achieving the goal. "
+
+    elif assistant_role == "harvest":
+        prompt_template += "Your goal is to persuade me as strongly as possible to choose a harvesting action. Therefore, you need to select an appropriate harvesting action and provide compelling reasons for choosing this action. To strengthen your persuasion, you should clearly explain—based on the game rules and the current game state—how the harvesting action you choose will benefit progress toward achieving the goal. "
+
+    elif assistant_role == "combat":
+        prompt_template += "Your goal is to persuade me as strongly as possible to choose a combat action. Therefore, you need to select an appropriate combat action and provide compelling reasons for choosing this action. To strengthen your persuasion, you should clearly explain—based on the game rules and the current game state—how the combat action you choose will benefit progress toward achieving the goal. "
+
+    else:
+        raise ValueError(f"Unsupported assistant role: {assistant_role}")
+
+    # if plan:
+    #     prompt_template += "I will provide my long-term goal, my plan for achieving the long-term goal, descriptions of the game mechanics, the current game state, and the available actions. "
+    # else:
+    prompt_template += "I will provide the information needed for decision-making, including descriptions of the game mechanics and the current game state (provided as JSON). "
+
+    prompt_template += f"Your entire response must be a single valid JSON object in the following format:\n{action_response_format}\nDo not include any text outside of the JSON object. "
+    return prompt_template
+
+
+def generate_assistant_user_prompt(
+    game_mechanics,
+    game_state,
+    action_space,
+    goal=None,
+):
+    action_space = json.dumps(action_space, indent=4)
+    if candidate_action:
+        candidate_action = json.dumps(candidate_action, indent=4)
+    prompt_template = ""
+    if goal:
+        prompt_template += f"# My Long-term Goal\n{goal}\n\n"
+    prompt_template += f"# Game Introduction\n{game_mechanics}\n\n"
+    prompt_template += f"# Game Rule and Related Game State\n{game_state}\n\n"
+    prompt_template += f"# Available Actions\n{action_space}\n\n"
     return prompt_template

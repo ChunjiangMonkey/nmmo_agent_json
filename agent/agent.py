@@ -65,9 +65,6 @@ class LLMPlayer:
         player_role="task",
         goal=None,
         use_information_reduction=False,  # 是否压缩信息
-        strategy_manager=None,  # 传入的strategy
-        use_strategy=False,  # 是否使用策略
-        run_task=True,
         allow_give_action=False,
         use_interaction_memory=False,
         max_verify_time=5,
@@ -80,7 +77,6 @@ class LLMPlayer:
         self.player_role = player_role
         self.use_information_reduction = use_information_reduction
         self.allow_give_action = allow_give_action
-        self.run_task = run_task
         self.use_interaction_memory = use_interaction_memory
         # self.use_strategy = use_strategy
         # self.use_verify = use_verify
@@ -144,30 +140,6 @@ class LLMPlayer:
     def update_memory(self, tick, event):
         self.memory_module.update(tick, event, self.ml_action)
 
-    def update_strategy(self, obs, tick):
-        pass
-        # state_description = self.state_manager.get_state_description(obs, tick, self.horizon)
-        # game_mechanics = acclimate(
-        #     self.llm_client,
-        #     tick,
-        #     self.config,
-        #     self.goal,
-        #     state_description,
-        #     self.file_name_full,
-        #     use_information_reduction=self.use_information_reduction,
-        #     debug=self.debug,
-        # )
-
-        # update(
-        #     self.llm_client,
-        #     self.strategy_manager,
-        #     state_description,
-        #     tick,
-        #     game_mechanics,
-        #     self.file_name_full,
-        #     debug=self.debug,
-        # )
-
     @property
     def token_usage(self):
         return self.llm_client.get_token_usage()
@@ -181,13 +153,7 @@ class LLMPlayer:
         #     game_mechanics = self.game_rule_module.get_detail_game_rule()
         state_info = self.state_manager.get_state_info(obs)
         state_description = self.perceive_module.perceive(state_info, tick, self.horizon)
-
-        # if self.executed_ml_action_number % 10 == 0:
-        #     self.plan = self.plan_module.plan(self.goal, game_mechanics, state_description)
         self.plan = None
-
-        # print("=== State Description ===" f"{state_description}")
-        # print(action_space)
         if self.use_interaction_memory and tick > 1:
             recent_event = self.memory_module.get_recent_description(10)
             if recent_event:

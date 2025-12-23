@@ -149,7 +149,7 @@ def build_map_config(
         MAP_PREVIEW_DOWNSCALE = 4
         ALLOW_MULTI_TASKS_PER_AGENT = True
         MAP_CENTER = map_size
-        MAP_SIZE = map_size + 16
+        MAP_SIZE = map_size + 32
         HORIZON = horizon
         PLAYER_N = player_num
         NPC_N = npc_num
@@ -251,7 +251,6 @@ def create_players(
             save_path,
             player_role=player_types[i],
             goal=goal_description,
-            run_task=run_task,
             use_information_reduction=use_information_reduction,
             allow_give_action=allow_give_action,
             use_interaction_memory=use_interaction_memory,
@@ -308,14 +307,14 @@ def build_game_status(task_mean, step, start_time, end_time, terminated, truncat
     game_status = {}
     game_status["program_run_time"] = f"{end_time - start_time:.4f}s"
     for task_name in task_mean.keys():
-        game_status[task_name] = np.mean(task_mean[task_name])
+        game_status[task_name] = float(np.mean(task_mean[task_name]))
     game_status["current_time"] = step
     all_agent_dead = all(terminated.values())
     game_end = all(truncated.values())
 
-    game_status["prompt_tokens"] = np.mean([player.token_usage["prompt_tokens"] for player in players])
-    game_status["completion_tokens"] = np.mean([player.token_usage["completion_tokens"] for player in players])
-    game_status["total_tokens"] = np.mean([player.token_usage["total_tokens"] for player in players])
+    game_status["prompt_tokens"] = float(np.sum([player.token_usage["prompt_tokens"] for player in players]))
+    game_status["completion_tokens"] = float(np.sum([player.token_usage["completion_tokens"] for player in players]))
+    game_status["total_tokens"] = float(np.sum([player.token_usage["total_tokens"] for player in players]))
 
     return game_status, all_agent_dead, game_end
 

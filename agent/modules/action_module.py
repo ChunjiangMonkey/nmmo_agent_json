@@ -145,8 +145,6 @@ class ActionModule:
             action_type,
             player_role,
             use_fog=self.config.DEATH_FOG_ONSET,
-            goal=goal,
-            plan=plan,
             feedback=feedback,
         )
 

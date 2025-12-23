@@ -1,19 +1,19 @@
 experiment:
   episode_num: 1
-  replay_save_interval: 128
+  replay_save_interval: 16
   # debug: True
 
 env:
   map_size: 128
-  player_num: 32
-  npc_num: 256
-  horizon: 1024
-  fog_onset: 256
+  player_num: 128
+  npc_num: 128
+  horizon: 128
+  fog_onset: 32
   fog_speed: 0.2
   fog_final_size: 16
   disable_stone: False
-  individual_num: 0
-  competitive_num: 32
+  individual_num: 128
+  competitive_num: 0
   cooperative_num: 0
 
 
