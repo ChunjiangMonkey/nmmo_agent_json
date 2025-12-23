@@ -129,6 +129,7 @@ class LLMPlayer:
         self.should_get_destroy_action = False
         self.should_get_give_action = False
         self.state_when_act = None
+        self.obs_when_act = None
 
         self.ml_action = None
         self.current_use_action = None
@@ -253,6 +254,7 @@ class LLMPlayer:
                     self.action_history = self.action_history[-10:]  # 写死10条历史记录
             self.current_execute_step = 0
             self.state_when_act = state_info
+            self.obs_when_act = obs
         else:
             self.current_execute_step += 1
         # print(f"ML Action at tick {tick}: {self.ml_action}")
@@ -382,7 +384,8 @@ class LLMPlayer:
         # print(self.current_action)
         self.current_action = self.action_module.merge_action(self.ml_action, use_action, destroy_action, give_action)
         save_ml_action(self.file_name_action, tick, self.current_action)
-        mdp_action = self.action_manager.execute(obs, self.current_action)
+        # obs_when_act for move
+        mdp_action = self.action_manager.execute(obs, self.obs_when_act, self.current_action)
         self.executed_ml_action_number += 1
         self.mdp_action = mdp_action
 

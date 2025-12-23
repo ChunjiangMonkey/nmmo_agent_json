@@ -179,7 +179,7 @@ def main(args):
         MAP_PREVIEW_DOWNSCALE = 4
         ALLOW_MULTI_TASKS_PER_AGENT = True
         MAP_CENTER = map_size
-        MAP_SIZE = map_size + 20
+        MAP_SIZE = map_size + 16
         HORIZON = horizon
         PLAYER_N = player_num
         NPC_N = npc_num

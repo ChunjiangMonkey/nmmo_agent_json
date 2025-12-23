@@ -82,10 +82,10 @@ class ActionManager:
         }
         self.area_index = {v: k for k, v in self.area_table.items()}
 
-    def execute(self, obs, ml_action):
+    def execute(self, obs, obs_when_act, ml_action):
         action = {}
 
-        move_action = self.move(obs, ml_action["Move"])
+        move_action = self.move(obs_when_act, ml_action["Move"])
         action["Move"] = {"Direction": move_action}
 
         entity_id, style = self.attack(obs, ml_action["Attack"])
@@ -233,7 +233,6 @@ class ActionManager:
         elif "Chase" in ml_action:
             if obs.entities:
                 entity_id_to_index = {entity[0]: i for i, entity in enumerate(obs.entities.values)}
-                print(entity_id_to_index)
             entity_id = self._get_chase_entity_id_from_response(ml_action)
             if entity_id:
                 direction_index = self.move_to_chase_target(obs, entity_id_to_index[entity_id])

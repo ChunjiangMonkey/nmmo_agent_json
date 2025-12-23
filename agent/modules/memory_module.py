@@ -2,6 +2,7 @@
 from collections import deque
 from copy import deepcopy
 from typing import Deque, Dict, List, Optional, Tuple
+from constant import RESOURCE_TILE
 
 MemoryEntry = Dict[str, object]
 
@@ -16,9 +17,11 @@ class MemoryModule:
 
         self.max_history = max_history
         self._history = []
+        self.statistical_info = {"harvest_count": {}, "kill_count": {}, "consume_count": {}}
 
-    def summarize(self):
-        pass
+    def reset(self):
+        self._history = []
+        self.statistical_info = {"harvest_count": {}, "kill_count": {}, "consume_count": {}}
 
     def update(self, tick, event_record, executing_action):
         # 目前该方法只记录交互事件
@@ -32,51 +35,6 @@ class MemoryModule:
             "description": interaction_event_description,
         }
         self._history.append(entry)
-
-    # def update(self, tick, event_record, state_info, executing_action):
-    #     # event_record其实记录了两个tick的事件
-    #     # 需要拆分harvest和其他事件
-    #     pre_action_event_description = self.generate_pre_action_event_description(event_record)
-    #     if pre_action_event_description:
-    #         if self._history:
-    #             if self._history[-1]["tick"] == tick - 1:
-    #                 self._history[-1]["description"] += pre_action_event_description
-    #             else:
-    #                 entry = {
-    #                     "tick": tick - 1,
-    #                     "food": state_info["agent"]["food"],
-    #                     "water": state_info["agent"]["water"],
-    #                     "health": state_info["agent"]["health"],
-    #                     "executing_action": executing_action,
-    #                     "record": event_record,
-    #                     "description": pre_action_event_description,
-    #                 }
-    #                 self._history.append(entry)
-    #         else:
-    #             entry = {
-    #                 "tick": tick - 1,
-    #                 "food": state_info["agent"]["food"],
-    #                 "water": state_info["agent"]["water"],
-    #                 "health": state_info["agent"]["health"],
-    #                 "executing_action": executing_action,
-    #                 "record": event_record,
-    #                 "description": pre_action_event_description,
-    #             }
-    #             self._history.append(entry)
-
-    #     post_action_event_description = self.generate_interaction_event_description(event_record)
-    #     if post_action_event_description == "":
-    #         return
-    #     entry = {
-    #         "tick": tick,
-    #         "food": state_info["agent"]["food"],
-    #         "water": state_info["agent"]["water"],
-    #         "health": state_info["agent"]["health"],
-    #         "executing_action": executing_action,
-    #         "record": event_record,
-    #         "description": post_action_event_description,
-    #     }
-    #     self._history.append(entry)
 
     def get_last_tick_record(self, tick):
         assert tick > 1
@@ -110,6 +68,10 @@ class MemoryModule:
                 item_number = harvest_item["number"]
                 item_res = harvest_item["item_res"]
                 description += f"I harvest {item_number} level {item_level} {item_name} from {item_res} tile. \n"
+                if item_name in self.statistical_info["harvest_count"].keys():
+                    self.statistical_info["harvest_count"][item_name] += harvest_item["number"]
+                else:
+                    self.statistical_info["harvest_count"][item_name] = harvest_item["number"]
 
         # 升级事件
         if record["skill_level_up"]:
@@ -130,6 +92,10 @@ class MemoryModule:
                 )
             elif item_name == "Potion":
                 description += f"I consume {item_number} level {item_level} {item_name}, restoring {restore_value} Health. \n"
+            if item_name in self.statistical_info["consume_count"].keys():
+                self.statistical_info["consume_count"][item_name] += record["consume"]["number"]
+            else:
+                self.statistical_info["consume_count"][item_name] = record["consume"]["number"]
         return description
 
     def generate_interaction_event_description(self, record):
@@ -159,6 +125,11 @@ class MemoryModule:
             level = record["kill"]["level"]
 
             description += f"I killed {target_name} with level {level}. "
+            target_type = "NPC" if "NPC" in target_name else "Player"
+            if target_type in self.statistical_info["kill_count"].keys():
+                self.statistical_info["kill_count"][target_type] += 1
+            else:
+                self.statistical_info["kill_count"][target_type] = 1
             if record["loot"]:
                 description += "Therefore, I looted the following items: "
                 for i, loot_item in enumerate(record["loot"]):
