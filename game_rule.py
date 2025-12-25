@@ -106,12 +106,12 @@ RESOURCE_TABLE = {
     },
     "Fish": {
         "output_item": "Ration",
-        "related skill": "Fishing",
+        "related_skill": "Fishing",
         "tool_for_higher_level": "Rod",
     },
     "Herb": {
         "output_item": "Potion",
-        "related skill": "Herbalism",
+        "related_skill": "Herbalism",
         "tool_for_higher_level": "Gloves",
     },
     "Tree": {
@@ -123,13 +123,13 @@ RESOURCE_TABLE = {
     "Ore": {
         "output_item": "Whetstone",
         "rare_output_item (2.5% chance)": "Wand",
-        "related skill": "Prospecting",
+        "related_skill": "Prospecting",
         "tool_for_higher_level": "Pickaxe",
     },
     "Crystal": {
         "output_item": "Runes",
         "rare_output_item (2.5% chance)": "Bow",
-        "related skill": "Alchemy",
+        "related_skill": "Alchemy",
         "tool_for_higher_level": "Chisel",
     },
 }

@@ -16,6 +16,8 @@ sys.path.append(grandparent_dir)
 from agent.prompt_template import (
     generate_assistant_system_prompt,
     generate_assistant_user_prompt,
+    generate_summary_system_prompt,
+    generate_summary_user_prompt,
 )
 
 
@@ -38,8 +40,14 @@ import json
 from utils.io_utils import write_to_file
 
 assistant_response_format = {
-    "reason": "reason for selecting Give action. ",
+    "reason": "reason for selecting the action. You should make every effort to persuade me to adopt the action you have chosen.",
     "choice": "*Only* return the action you select. Do not add extra text",
+}
+
+summary_response_format = {
+    "reason": "reason for selecting the action.  ",
+    "assistant": "the assistant corresponding to the action you have chosen.",
+    "choice": "the action you ultimately choose must be exactly the same as the action provided by the assistant.",
 }
 
 
@@ -47,22 +55,18 @@ class Assistant:
     def __init__(
         self,
         llm_client,
-        config,
-        env,
-        horizon,
         assistant_role,
         save_path,
         player_role="task",
+        use_fog=False,
         debug=False,
     ):
         ##### 参数 #####
         self.llm_client = llm_client
-        self.config = config
-        self.env = env
-        self.horizon = horizon
         self.assistant_role = assistant_role
         self.save_path = save_path
         self.player_role = player_role
+        self.use_fog = use_fog
         self.debug = debug
 
     def generate_input_message(
@@ -77,7 +81,7 @@ class Assistant:
             assistant_response_format,
             self.player_role,
             self.assistant_role,
-            use_fog=self.config.DEATH_FOG_ONSET,
+            use_fog=self.use_fog,
         )
 
         system_message = {
@@ -149,3 +153,47 @@ class Assistant:
             )
 
             return None
+
+
+class Summarizer:
+    def __init__(
+        self,
+        llm_client,
+        save_path,
+        use_fog=False,
+        debug=False,
+    ):
+        ##### 参数 #####
+        self.llm_client = llm_client
+        self.save_path = save_path
+        self.use_fog = use_fog
+        self.debug = debug
+
+    def generate_input_message(
+        self,
+        game_mechanics,
+        game_state,
+    ):
+        # ========= System Message =========
+        system_prompt = generate_summary_system_prompt(
+            summary_response_format={
+                "summary": "A concise summary of the key information from the game mechanics and current game state.",
+            }
+        )
+
+        system_message = {
+            "role": "system",
+            "content": system_prompt,
+        }
+
+        # ========= User Message =========
+        user_prompt = generate_summary_user_prompt(
+            game_mechanics,
+            game_state,
+        )
+        user_message = {
+            "role": "user",
+            "content": user_prompt,
+        }
+
+        return [system_message, user_message]

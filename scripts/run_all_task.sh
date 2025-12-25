@@ -16,9 +16,9 @@ commands=()
 
 for task in "${tasks[@]}"; do
     if [[ " ${simple_tasks[*]} " =~ " ${task} " ]]; then
-        nick_name="run_simple_task_试试gpt"
+        nick_name="run_simple_task_试试约简"
     elif [[ " ${difficult_tasks[*]} " =~ " ${task} " ]]; then
-        nick_name="run_difficult_task_试试gpt"
+        nick_name="run_difficult_task_试试约简"
     else
         echo "Task ${task} not found in simple or difficult lists, skipping." >&2
         continue

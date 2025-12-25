@@ -19,9 +19,9 @@ env:
 
 
 agent:
-  model_name: "gpt-5.1"
+  model_name: "llama"
   enable_llm_thinking: False
-  use_information_reduction: False
+  use_information_reduction: True
   use_strategy: False
   use_interaction_memory: False
   allow_give_action: True

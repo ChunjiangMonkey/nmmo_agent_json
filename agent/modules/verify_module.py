@@ -37,11 +37,11 @@ class VerifyModule:
         tick,
         game_mechanics,
         state_description,
-        goal,
-        plan,
-        action_history,
-        candidate_action,
-        verify_time,
+        goal=None,
+        plan=None,
+        action_history=None,
+        candidate_action=None,
+        verify_time=None,
     ):
         input_message = self.generate_input_message(
             verify_type, player_role, goal, game_mechanics, state_description, candidate_action, plan=plan, strategies=action_history

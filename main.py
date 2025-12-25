@@ -323,7 +323,8 @@ def update_alive_players(terminated, players, env, step):
     alive_players = []
     for agent_id in terminated.keys():
         if terminated[agent_id]:
-            players[agent_id - 1].update_strategy(env.obs[agent_id], step)
+            # players[agent_id - 1].update_strategy(env.obs[agent_id], step)
+            pass
         else:
             alive_players.append(agent_id)
     return alive_players

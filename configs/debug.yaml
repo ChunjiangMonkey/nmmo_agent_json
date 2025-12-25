@@ -5,14 +5,14 @@ experiment:
 
 env:
   map_size: 128
-  player_num: 128
+  player_num: 16
   npc_num: 128
   horizon: 128
   fog_onset: 32
   fog_speed: 0.2
   fog_final_size: 16
   disable_stone: False
-  individual_num: 128
+  individual_num: 16
   competitive_num: 0
   cooperative_num: 0
 
@@ -26,6 +26,6 @@ agent:
   use_interaction_memory: False
   allow_give_action: True
   max_execute_step: 5
-  max_verify_time: 0
+  max_verify_time: 2
   share_strategy: False
   share_game_rule_module: False

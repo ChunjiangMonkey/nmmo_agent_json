@@ -2,6 +2,7 @@ import sys
 import os
 import re
 import json
+import random
 
 current_dir = os.path.abspath(__file__)
 sys.path.append(current_dir)
@@ -117,8 +118,6 @@ class PerceptionModule:
             skill_description += json.dumps(SKILL_TABLE, indent=4)
             description += skill_description + "\nHere is my character's current skill levels:\n"
             description += self.generate_skill_description(state_info["agent"]) + "\n"
-
-        # print(description)
         return description
 
     def generate_survive_description(self, ego_agent_info):

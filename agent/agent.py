@@ -44,6 +44,7 @@ from agent.modules.action_module import ActionModule
 from agent.modules.planning_module import PlanningModule
 from agent.modules.perception_module import PerceptionModule
 from agent.modules.verify_module import VerifyModule
+from agent.modules.reduction_module import ReductionModule
 from api_key import openai_base_url, openai_api_key, llama_base_url, llama_api_key
 
 
@@ -64,7 +65,7 @@ class LLMPlayer:
         file_save_path,
         player_role="task",
         goal=None,
-        use_information_reduction=False,  # 是否压缩信息
+        use_information_reduction=True,  # 是否压缩信息
         allow_give_action=False,
         use_interaction_memory=False,
         max_verify_time=5,
@@ -95,7 +96,6 @@ class LLMPlayer:
         self.llm_client = LLMClient(base_url=base_url, api_key=api_key, model=model_name, enable_thinking=enable_llm_thinking)
 
         self.file_save_path = file_save_path
-        self.file_name_simple = f"{self.file_save_path}/state_prompt_{self.model_name}.txt"  # 简单提示文件保存路径
         self.file_name_full = f"{self.file_save_path}/prompt_{self.model_name}.txt"  # 完整提示文件保存路径
         self.file_name_action = f"{self.file_save_path}/ml_action.csv"
 
@@ -111,6 +111,14 @@ class LLMPlayer:
         self.plan_module = PlanningModule(config, self.llm_client, self.file_name_full, debug=debug)
         self.action_module = ActionModule(config, self.llm_client, self.file_name_full, debug=debug)
         self.verify_module = VerifyModule(config, self.llm_client, self.file_name_full, debug=debug)
+        if self.use_information_reduction:
+            self.reduction_module = ReductionModule(
+                config,
+                self.llm_client,
+                self.file_name_full,
+                use_reduction=True,
+                debug=debug,
+            )
         self.state_description = None
         self.action_space = None
 
@@ -137,6 +145,8 @@ class LLMPlayer:
             self.action_history = []
         self.executed_ml_action_number = 0
 
+        self.use_memory_length = 10
+
     def update_memory(self, tick, event):
         self.memory_module.update(tick, event, self.ml_action)
 
@@ -153,6 +163,7 @@ class LLMPlayer:
         #     game_mechanics = self.game_rule_module.get_detail_game_rule()
         state_info = self.state_manager.get_state_info(obs)
         state_description = self.perceive_module.perceive(state_info, tick, self.horizon)
+
         self.plan = None
         if self.use_interaction_memory and tick > 1:
             recent_event = self.memory_module.get_recent_description(10)
@@ -177,6 +188,17 @@ class LLMPlayer:
         # 获取ml action
         if self.should_get_ml_action:
             ml_action_space = self.action_module.generate_available_ml_action(state_info)
+            if self.use_information_reduction:
+                reduced_state_description = self.reduction_module.reduce(
+                    tick,
+                    game_mechanics,
+                    state_description,
+                    ml_action_space,
+                    goal=self.goal,
+                )
+                if reduced_state_description:
+                    state_description = reduced_state_description
+
             candidate_action = None
             feed_back = None
             verify_time = 0
@@ -188,11 +210,9 @@ class LLMPlayer:
                         tick,
                         game_mechanics,
                         state_description,
-                        ml_action_space,
                         goal=self.goal,
                         plan=self.plan,
                         action_history=self.action_history if self.add_action_history else None,
-                        feedback=feed_back,
                         candidate_action=candidate_action,
                         verify_time=verify_time,
                     )

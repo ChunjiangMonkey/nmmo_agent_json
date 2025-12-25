@@ -2,9 +2,24 @@ import json
 
 
 ##### system prompt template #####
-# def generate_reduction_system_prompt():
-#     prompt_template = "You are an AI assistant in an open-world survival game. I need you help me filter out the information from the game mechanics that meets the following criteria: (1) related to achieving long-term goal; (2) related to survival. The format of your reply should be:\n# Game Mechanics\n{your filtered game mechanics}\nDo not summarize or rewrite them, and do not include any additional content (such as your reasoning). "
+# def generate_reduction_system_prompt(reduction_response_format, player_role):
+#     reduction_goal = "(1) ensure my survival"
+#     if player_role == "task":
+#         reduction_goal += " ; (2) complete my long-term goal as quickly as possible"
+#     prompt_template = (
+#         f"You are an AI assistant in an open-world survival game. I need you help me filter out the information from the game mechanics and game state to help me focus on the most critical information for my decision-making to {reduction_goal}. Your summary must not contain any factual errors. You may ignore rules that are not needed in the current state. Your entire response must be a single valid JSON object in the following format:\n"
+#         + json.dumps(reduction_response_format, indent=4)
+#         + "\nDo not include any text outside of the JSON object. "
+#     )
 #     return prompt_template
+
+def generate_reduction_system_prompt(reduction_response_format):
+    prompt_template = (
+        f"You are an AI assistant in an open-world survival game. I am selecting an action from the feasible action space based on my current goal, the game rules, and the game state. However, the descriptions of the game rules and game state are too long, and much of the information is irrelevant to my current action space, which distracts my attention. I need you to filter and summarize the information relevant to my current decision based on my current action space, so that I can focus on the most important information. Note: your filtering and summary must not introduce any factual errors. Your entire response must be a single valid JSON object in the following format:\n"
+        + json.dumps(reduction_response_format, indent=4)
+        + "\nDo not include any text outside of the JSON object. "
+    )
+    return prompt_template
 
 
 def generate_plan_system_prompt(plan_response_format, game_state=None):
@@ -14,7 +29,6 @@ def generate_plan_system_prompt(plan_response_format, game_state=None):
     else:
         prompt_template = f"You are an AI assistant in an open-world survival game. I need you help me generate a plan for achieving my long-term goal. I will provide my long-term goal, descriptions of the game mechanics. "
     prompt_template += f"Your entire response must be a single valid JSON object in the following format:\n{plan_response_format}\nDo not include any text outside of the JSON object.\nNote: *Survival* is an absolute priority. "
-    example = ""
     return prompt_template
 
 
@@ -42,7 +56,7 @@ def generate_action_system_prompt(action_response_format, action_type, player_ro
         prompt_template += "I need you help me select an action for my game character to ensure my character's survival and achieve my long-term goal as quickly as possible. "
     elif player_role == "individual":
         prompt_template += (
-            "I want my game character to survive as long as possible, and I don't care about the survival of other players. "
+            "I want my game character to survive as long as possible "
         )
     elif player_role == "competitive":
         prompt_template += "I want my game character to survive as long as possible. However, the survival resources are limited, so I want my character to stand out in the competition with other players and survive until the end. This may mean eliminating potential competitors, including other players or NPCs. "
@@ -118,6 +132,24 @@ def generate_strategy_update_system_prompt(strategy_update_response_format):
 
 
 ##### user prompt template #####
+
+
+def generate_reduction_user_prompt(
+    game_mechanics,
+    game_state,
+    action_space,
+    goal=None,
+):
+    action_space = json.dumps(action_space, indent=4)
+    prompt_template = ""
+    if goal:
+        prompt_template += f"# My Long-term Goal\n{goal}\n\n"
+    prompt_template += f"# Game Introduction\n{game_mechanics}\n\n"
+    prompt_template += f"# Game Rule and Related Game State\n{game_state}\n\n"
+    prompt_template += f"# Available Actions\n{action_space}\n\n"
+    return prompt_template
+
+
 def generate_plan_user_prompt(goal, game_mechanics, game_state=None):
     prompt_template = f"# My Long-term Goal\n{goal}\n\n# Game Mechanics\n{game_mechanics}\n\n"
     if game_state:
@@ -249,4 +281,15 @@ def generate_assistant_user_prompt(
     prompt_template += f"# Game Introduction\n{game_mechanics}\n\n"
     prompt_template += f"# Game Rule and Related Game State\n{game_state}\n\n"
     prompt_template += f"# Available Actions\n{action_space}\n\n"
+    return prompt_template
+
+
+def generate_summary_system_prompt(summary_response_format):
+    summary_response_format = json.dumps(summary_response_format, indent=4)
+    prompt_template = f"You are an AI assistant in an open-world survival game. I need you help me summarize the key information from the game mechanics and the current game state (provided as JSON). Your entire response must be a single valid JSON object in the following format:\n{summary_response_format}\nDo not include any text outside of the JSON object. "
+    return prompt_template
+
+
+def generate_summary_user_prompt(game_mechanics, game_state):
+    prompt_template = f"# Game Mechanics\n{game_mechanics}\n\n# Game State\n{game_state}"
     return prompt_template
